@@ -65,16 +65,79 @@ the host. Set environment variables in the stack's env/secrets UI.
 (it has no build context and can only pull). The included GitHub Actions workflow
 ([.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml))
 builds and pushes to GHCR (`ghcr.io/<you>/selfparcel`) on every push to `main`;
-make the package public or add a registry pull credential. Then:
+make the package public or add a registry pull credential.
+
+**Paste-ready stack.** Drop this into Komodo or Portainer's web editor and
+uncomment whatever you need. Everything except the image and volume is optional.
 
 ```yaml
-# in your stack
-environment:
-  SELFPARCEL_IMAGE: ghcr.io/<you>/selfparcel:latest
+services:
+  selfparcel:
+    image: ghcr.io/<you>/selfparcel:latest   # replace <you>; or remove and add `build: .` for repo builds
+    container_name: selfparcel
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - selfparcel-data:/data
+    environment:
+      TZ: "UTC"
+      # POLL_INTERVAL_MINUTES: "30"
+      # MIN_REFRESH_MINUTES: "10"
+      # APP_BASE_URL: "https://parcels.example.com"   # used for notification links
+      # SCRAPER_BROWSER_FALLBACK: "true"
+
+      # --- Carrier API keys (server-wide default; users can also set their own) ---
+      # UPS_CLIENT_ID: ""
+      # UPS_CLIENT_SECRET: ""
+      # UPS_ENV: "production"
+      # FEDEX_CLIENT_ID: ""
+      # FEDEX_CLIENT_SECRET: ""
+      # FEDEX_ENV: "production"
+
+      # --- Authentication: none | local | oidc ---
+      # AUTH_MODE: "none"
+      # SESSION_SECRET: ""                # required for local/oidc; openssl rand -hex 32
+      # SESSION_TTL_HOURS: "168"
+      # OIDC_ISSUER: ""
+      # OIDC_CLIENT_ID: ""
+      # OIDC_CLIENT_SECRET: ""
+      # OIDC_REDIRECT_URI: ""            # blank = derived from the request
+      # OIDC_SCOPES: "openid profile email"
+      # OIDC_POST_LOGOUT_REDIRECT_URI: ""
+      # OIDC_ALLOWED_EMAILS: ""          # comma-separated
+      # OIDC_ALLOWED_DOMAINS: ""         # comma-separated
+
+      # --- Notifications (all optional, fire together) ---
+      # NOTIFY_TRIGGER: "status_change"  # status_change | every_event | delivered_exceptions
+      # NOTIFY_ON_FIRST_FETCH: "false"
+      # NTFY_URL: ""
+      # NTFY_TOKEN: ""
+      # PUSHOVER_TOKEN: ""
+      # PUSHOVER_USER: ""
+      # GOTIFY_URL: ""
+      # GOTIFY_TOKEN: ""
+      # SMTP_HOST: ""
+      # SMTP_PORT: "587"
+      # SMTP_SECURE: "false"
+      # SMTP_USER: ""
+      # SMTP_PASS: ""
+      # SMTP_FROM: ""
+      # SMTP_TO: ""
+      # WEBHOOK_URL: ""
+      # WEBHOOK_FORMAT: "json"           # json | discord | slack
+      # APPRISE_API_URL: ""
+      # APPRISE_URLS: ""
+      # VAPID_PUBLIC_KEY: ""             # browser push; npm run gen:vapid
+      # VAPID_PRIVATE_KEY: ""
+      # VAPID_SUBJECT: "mailto:you@example.com"
+
+volumes:
+  selfparcel-data:
 ```
 
-Either way, persist the `/data` volume so the SQLite database survives restarts.
-The container has a healthcheck on `/api/health` that both tools display.
+Persist the `/data` volume so the SQLite database survives restarts. The
+container has a healthcheck on `/api/health` that both tools display.
 
 ## Notifications
 
