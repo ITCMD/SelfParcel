@@ -1,11 +1,23 @@
+# Works three ways:
+#   1. Local / git-repo deploy (Komodo, Portainer "from repository"): the build
+#      section compiles the image on the host. No registry needed.
+#   2. Pre-built image: set SELFPARCEL_IMAGE to a registry tag and it's pulled.
+#   3. Portainer web editor (no build context): it pulls SELFPARCEL_IMAGE, so a
+#      published image is required there.
 services:
   selfparcel:
+    image: ${SELFPARCEL_IMAGE:-ghcr.io/OWNER/selfparcel:latest}
     build: .
-    image: selfparcel:latest
     container_name: selfparcel
     restart: unless-stopped
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       PORT: "8080"
       DATABASE_PATH: /data/selfparcel.sqlite

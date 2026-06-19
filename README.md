@@ -45,6 +45,31 @@ FEDEX_CLIENT_ID=...
 FEDEX_CLIENT_SECRET=...
 ```
 
+### Komodo / Portainer
+
+The compose file works whether the image is built on the host or pulled from a
+registry, so you have two options:
+
+**Build from the repo (no registry needed).** Point Komodo or Portainer at this
+Git repo as a stack. They clone it and the `build:` section compiles the image on
+the host. Set environment variables in the stack's env/secrets UI.
+
+**Pull a pre-built image.** Push an image to a registry once, then set
+`SELFPARCEL_IMAGE` to its tag. This is required for Portainer's inline web editor
+(it has no build context and can only pull). The included GitHub Actions workflow
+([.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml))
+builds and pushes to GHCR (`ghcr.io/<you>/selfparcel`) on every push to `main`;
+make the package public or add a registry pull credential. Then:
+
+```yaml
+# in your stack
+environment:
+  SELFPARCEL_IMAGE: ghcr.io/<you>/selfparcel:latest
+```
+
+Either way, persist the `/data` volume so the SQLite database survives restarts.
+The container has a healthcheck on `/api/health` that both tools display.
+
 ## Notifications
 
 SelfParcel can ping you when a package moves. Configure any mix of channels via
