@@ -33,15 +33,17 @@ Both are free but involve some sign-up. Once you have the keys, add them in
 
 **UPS** ([developer.ups.com](https://developer.ups.com))
 1. Create/sign in to a UPS account, then open the UPS Developer Portal.
-2. Add an app to your account and request access to the **Tracking** API.
+2. Add an app to your account and request access to the **Tracking** API. I know, forms suck, but this is the price to not have your tracking numbers sold to scammers.
 3. Copy the app's **Client ID** and **Client Secret** into SelfParcel and set the
    environment to **production**.
 
 **FedEx** ([developer.fedex.com](https://developer.fedex.com))
 1. Create/sign in to a FedEx account, then open the FedEx Developer Portal.
-2. Create a project and enable the **Track API**. New projects start in a test
-   sandbox; moving to production needs organization/business details.
-3. Copy the project's **API Key** (→ Client ID) and **Secret Key**
+2. Create an organization if you do not have one. Set this to whatever, I set mine to "Firstname Lastname Personal Tracker" and set the site to my selfparcel url.
+3. Create a project and enable the **Track API**. New projects start in a test
+   sandbox; moving to production needs organization/business details. <img width="840" height="532" alt="Screenshot 2026-06-19 093440" src="https://github.com/user-attachments/assets/2d0d7e58-8e00-4aa0-ad18-892a85515782" />
+
+4. Copy the project's **API Key** (→ Client ID) and **Secret Key**
    (→ Client Secret) into SelfParcel. Use **test** while in the sandbox,
    **production** once approved.
 
