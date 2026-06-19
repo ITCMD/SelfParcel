@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SelfParcel - Package Tracking</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#24348c" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SelfParcel" />
+  </head>
+  <body>
+    <header class="manifest-bar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">📦</span>
+        <span class="wordmark">SelfParcel</span>
+        <span class="tagline">dispatch</span>
+      </div>
+      <div class="bar-right">
+        <span id="account" class="account hidden"></span>
+        <button id="open-users" class="btn ghost hidden" title="Manage users">Users</button>
+        <button id="open-providers" class="btn ghost hidden" title="Shipping providers">Providers</button>
+        <button id="open-settings" class="btn ghost" title="Notification settings">
+          <span class="ico">⚙</span> Settings
+        </button>
+        <button id="refresh-all" class="btn ghost" title="Refresh all active packages">
+          <span class="ico">↻</span> Refresh all
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="intake" aria-label="Add a shipment">
+        <form id="add-form">
+          <div class="intake-grid">
+            <div class="field field-grow">
+              <label class="field-label" for="tracking-number">Tracking number</label>
+              <input
+                id="tracking-number"
+                name="trackingNumber"
+                class="mono"
+                placeholder="e.g. 1Z999AA10123456784"
+                autocomplete="off"
+                spellcheck="false"
+                required
+              />
+            </div>
+            <div class="field">
+              <label class="field-label" for="carrier">Carrier</label>
+              <select id="carrier" name="carrier">
+                <option value="">Auto-detect</option>
+                <option value="ups">UPS</option>
+                <option value="usps">USPS</option>
+                <option value="fedex">FedEx</option>
+                <option value="speedpak">SpeedPAK</option>
+              </select>
+            </div>
+            <div class="field field-grow">
+              <label class="field-label" for="label">
+                Label <span class="opt">optional</span>
+              </label>
+              <input id="label" name="label" placeholder="Running shoes" autocomplete="off" />
+            </div>
+            <button type="submit" class="btn primary">Track</button>
+          </div>
+          <p id="detect-hint" class="hint" role="status"></p>
+        </form>
+      </section>
+
+      <section class="statusline" aria-label="Carrier status">
+        <div id="carrier-status" class="carrier-status"></div>
+        <label class="toggle">
+          <input type="checkbox" id="show-archived" /> Show archived
+        </label>
+      </section>
+
+      <section id="package-list" class="package-list"></section>
+      <p id="empty" class="empty hidden">
+        No shipments tracked yet. Add a tracking number above to start watching it.
+      </p>
+    </main>
+
+    <!-- Login gate (local auth mode) -->
+    <div id="login-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content login-card">
+        <div class="brand login-brand">
+          <span class="logo" aria-hidden="true">📦</span>
+          <span class="wordmark">SelfParcel</span>
+        </div>
+        <div id="login-pane">
+          <div class="log-head">Sign in</div>
+          <form id="login-form">
+            <div class="field"><label class="field-label" for="login-user">Username</label>
+              <input id="login-user" autocomplete="username" required /></div>
+            <div class="field"><label class="field-label" for="login-pass">Password</label>
+              <input id="login-pass" type="password" autocomplete="current-password" required /></div>
+            <button type="submit" class="btn primary" style="width:100%;margin-top:6px">Sign in</button>
+          </form>
+          <p class="hint" id="login-switch"></p>
+        </div>
+        <div id="register-pane" class="hidden">
+          <div class="log-head" id="register-head">Create account</div>
+          <form id="register-form">
+            <div class="field"><label class="field-label" for="reg-user">Username</label>
+              <input id="reg-user" autocomplete="username" required /></div>
+            <div class="field"><label class="field-label" for="reg-email">Email <span class="opt">optional</span></label>
+              <input id="reg-email" type="email" autocomplete="email" /></div>
+            <div class="field"><label class="field-label" for="reg-pass">Password</label>
+              <input id="reg-pass" type="password" autocomplete="new-password" required /></div>
+            <button type="submit" class="btn primary" style="width:100%;margin-top:6px">Create account</button>
+          </form>
+          <p class="hint" id="register-switch"></p>
+        </div>
+        <p class="error-line hidden" id="login-error"></p>
+      </div>
+    </div>
+
+    <!-- Users admin -->
+    <div id="users-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <button class="modal-close" id="users-close" aria-label="Close">×</button>
+        <h2>Users</h2>
+        <div class="modal-sub">Manage who can access SelfParcel</div>
+        <label class="toggle" style="margin:14px 0">
+          <input type="checkbox" id="reg-toggle" /> Allow open registration
+        </label>
+        <div id="users-list" class="user-list"></div>
+        <div id="create-user-box">
+          <div class="log-head">Add a user</div>
+          <form id="create-user-form" class="row">
+            <input id="cu-user" placeholder="Username" autocomplete="off" />
+            <input id="cu-pass" type="password" placeholder="Password" autocomplete="new-password" />
+            <select id="cu-role"><option value="user">User</option><option value="admin">Admin</option></select>
+            <button type="submit" class="btn primary">Add</button>
+          </form>
+        </div>
+        <p class="hint" id="users-msg"></p>
+      </div>
+    </div>
+
+    <!-- Shipping providers admin -->
+    <div id="providers-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content wide">
+        <button class="modal-close" id="providers-close" aria-label="Close">×</button>
+        <h2>Shipping providers</h2>
+        <div class="modal-sub">Carriers and how SelfParcel pulls their data</div>
+        <div id="providers-list" class="provider-list"></div>
+
+        <div class="log-head">Install a module</div>
+        <p class="hint">Paste a module (JSON) or fetch one from an https URL. New modules install disabled, review then enable.</p>
+        <div class="row">
+          <input id="install-url" placeholder="https://…/module.json" autocomplete="off" />
+          <button id="install-url-btn" class="btn">Fetch URL</button>
+        </div>
+        <textarea id="install-json" class="code-area" placeholder='{ "schema": "selfparcel.module/v1", "code": "dhl", ... }'></textarea>
+        <button id="install-json-btn" class="btn primary">Install from JSON</button>
+        <p class="hint" id="providers-msg"></p>
+      </div>
+    </div>
+
+    <!-- Module editor (selectors / config) -->
+    <div id="module-edit-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content wide">
+        <button class="modal-close" id="module-edit-close" aria-label="Close">×</button>
+        <h2 id="module-edit-title">Edit module</h2>
+        <div class="modal-sub">Edit the selectors and request rules. Test before relying on it.</div>
+        <textarea id="module-edit-json" class="code-area tall"></textarea>
+        <div class="row" style="margin-top:10px">
+          <input id="module-test-tn" placeholder="Test a tracking number" autocomplete="off" />
+          <button id="module-test-btn" class="btn">Test</button>
+          <button id="module-save-btn" class="btn primary">Save</button>
+          <button id="module-reset-btn" class="btn">Reset to default</button>
+        </div>
+        <p class="hint" id="module-edit-msg"></p>
+        <div id="module-test-out"></div>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <button class="modal-close" id="settings-close" aria-label="Close">×</button>
+        <h2>Notifications</h2>
+        <div class="modal-sub">Where and when SelfParcel pings you</div>
+
+        <div class="log-head">When to notify</div>
+        <div class="field">
+          <select id="trigger-mode">
+            <option value="status_change">On status change + exceptions</option>
+            <option value="every_event">On every new scan</option>
+            <option value="delivered_exceptions">Only delivered + problems</option>
+          </select>
+        </div>
+
+        <div class="log-head">Browser notifications</div>
+        <p class="hint" id="push-hint"></p>
+        <button id="push-toggle" class="btn">Enable on this device</button>
+
+        <div class="log-head">Channels</div>
+        <div id="channel-list" class="channel-list"></div>
+        <button id="test-notify" class="btn" style="margin-top:14px">Send test notification</button>
+        <p class="hint" id="test-result"></p>
+      </div>
+    </div>
+
+    <div id="detail-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

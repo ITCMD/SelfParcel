@@ -1,0 +1,70 @@
+services:
+  selfparcel:
+    build: .
+    image: selfparcel:latest
+    container_name: selfparcel
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      DATABASE_PATH: /data/selfparcel.sqlite
+      POLL_INTERVAL_MINUTES: "30"
+      MIN_REFRESH_MINUTES: "10"
+      # Carrier API credentials (UPS + FedEx). Leave blank to disable that
+      # carrier's official API. USPS & SpeedPAK need no keys (browser emulation).
+      UPS_CLIENT_ID: "${UPS_CLIENT_ID:-}"
+      UPS_CLIENT_SECRET: "${UPS_CLIENT_SECRET:-}"
+      UPS_ENV: "${UPS_ENV:-production}"
+      FEDEX_CLIENT_ID: "${FEDEX_CLIENT_ID:-}"
+      FEDEX_CLIENT_SECRET: "${FEDEX_CLIENT_SECRET:-}"
+      FEDEX_ENV: "${FEDEX_ENV:-production}"
+      SCRAPER_BROWSER_FALLBACK: "true"
+      # Authentication: none | local | oidc (default none = unprotected).
+      AUTH_MODE: "${AUTH_MODE:-none}"
+      AUTH_ENABLED: "${AUTH_ENABLED:-false}"
+      OIDC_ISSUER: "${OIDC_ISSUER:-}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
+      SESSION_SECRET: "${SESSION_SECRET:-}"
+      OIDC_REDIRECT_URI: "${OIDC_REDIRECT_URI:-}"
+      OIDC_SCOPES: "${OIDC_SCOPES:-openid profile email}"
+      OIDC_POST_LOGOUT_REDIRECT_URI: "${OIDC_POST_LOGOUT_REDIRECT_URI:-}"
+      OIDC_ALLOWED_EMAILS: "${OIDC_ALLOWED_EMAILS:-}"
+      OIDC_ALLOWED_DOMAINS: "${OIDC_ALLOWED_DOMAINS:-}"
+      SESSION_TTL_HOURS: "${SESSION_TTL_HOURS:-168}"
+      # Notifications: all optional. Set the channels you want.
+      APP_BASE_URL: "${APP_BASE_URL:-}"
+      NOTIFY_TRIGGER: "${NOTIFY_TRIGGER:-status_change}"
+      NTFY_URL: "${NTFY_URL:-}"
+      NTFY_TOKEN: "${NTFY_TOKEN:-}"
+      PUSHOVER_TOKEN: "${PUSHOVER_TOKEN:-}"
+      PUSHOVER_USER: "${PUSHOVER_USER:-}"
+      GOTIFY_URL: "${GOTIFY_URL:-}"
+      GOTIFY_TOKEN: "${GOTIFY_TOKEN:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_TO: "${SMTP_TO:-}"
+      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+      WEBHOOK_FORMAT: "${WEBHOOK_FORMAT:-json}"
+      APPRISE_API_URL: "${APPRISE_API_URL:-}"
+      APPRISE_URLS: "${APPRISE_URLS:-}"
+      VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+      VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@example.com}"
+    volumes:
+      - selfparcel-data:/data
+
+  # Optional: run Apprise API as a sidecar to fan out to 80+ services.
+  # Then set APPRISE_API_URL=http://apprise:8000/notify and APPRISE_URLS=...
+  # apprise:
+  #   image: caronc/apprise:latest
+  #   container_name: selfparcel-apprise
+  #   restart: unless-stopped
+
+volumes:
+  selfparcel-data:
