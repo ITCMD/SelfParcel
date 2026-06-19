@@ -182,13 +182,11 @@
       <div class="modal-content">
         <button class="modal-close" id="settings-close" aria-label="Close">×</button>
         <h2>Settings</h2>
-        <div class="modal-sub">Notifications and your carrier keys</div>
+        <div class="modal-sub">Your tracking and notification preferences</div>
 
-        <div id="creds-section" class="hidden">
-          <div class="log-head">Your carrier API keys</div>
-          <p class="hint">Used for your own packages. Leave blank to use the server default.</p>
-          <div id="creds-list" class="user-list"></div>
-        </div>
+        <div class="log-head">Carrier API keys</div>
+        <p class="hint">Add your own UPS/FedEx API keys to use the official API. Leave blank to scrape the public page instead.</p>
+        <div id="creds-list" class="user-list"></div>
 
         <div class="log-head">When to notify</div>
         <div class="field">
@@ -203,10 +201,34 @@
         <p class="hint" id="push-hint"></p>
         <button id="push-toggle" class="btn">Enable on this device</button>
 
-        <div class="log-head">Channels</div>
-        <div id="channel-list" class="channel-list"></div>
-        <button id="test-notify" class="btn" style="margin-top:14px">Send test notification</button>
-        <p class="hint" id="test-result"></p>
+        <div class="log-head">Your notification channels</div>
+        <div class="creds-grid">
+          <div class="field"><label class="field-label" for="ch-ntfy-url">ntfy topic URL</label>
+            <input id="ch-ntfy-url" autocomplete="off" placeholder="https://ntfy.sh/my-parcels" /></div>
+          <div class="field"><label class="field-label" for="ch-ntfy-token">ntfy token <span class="opt">optional</span></label>
+            <input id="ch-ntfy-token" type="password" autocomplete="off" /></div>
+          <div class="field"><label class="field-label" for="ch-po-token">Pushover app token</label>
+            <input id="ch-po-token" type="password" autocomplete="off" /></div>
+          <div class="field"><label class="field-label" for="ch-po-user">Pushover user key</label>
+            <input id="ch-po-user" autocomplete="off" /></div>
+          <div class="field"><label class="field-label" for="ch-go-url">Gotify server URL</label>
+            <input id="ch-go-url" autocomplete="off" placeholder="https://gotify.example.com" /></div>
+          <div class="field"><label class="field-label" for="ch-go-token">Gotify app token</label>
+            <input id="ch-go-token" type="password" autocomplete="off" /></div>
+          <div class="field"><label class="field-label" for="ch-email">Email address <span id="ch-email-note" class="opt"></span></label>
+            <input id="ch-email" type="email" autocomplete="off" placeholder="you@example.com" /></div>
+          <div class="field"><label class="field-label" for="ch-wh-url">Webhook URL</label>
+            <input id="ch-wh-url" autocomplete="off" /></div>
+          <div class="field"><label class="field-label" for="ch-wh-format">Webhook format</label>
+            <select id="ch-wh-format"><option value="json">json</option><option value="discord">discord</option><option value="slack">slack</option></select></div>
+          <div class="field"><label class="field-label" for="ch-apprise">Apprise URLs <span id="ch-apprise-note" class="opt"></span></label>
+            <input id="ch-apprise" autocomplete="off" placeholder="ntfy://..., pushover://..." /></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="notify-save" class="btn primary">Save</button>
+          <button id="test-notify" class="btn">Send test</button>
+        </div>
+        <p class="hint" id="notify-msg"></p>
       </div>
     </div>
 

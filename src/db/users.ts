@@ -132,6 +132,7 @@ export function touchLogin(id: string): void {
 export function deleteUser(id: string): void {
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
   db.prepare('DELETE FROM package_shares WHERE user_id = ?').run(id);
+  db.prepare('DELETE FROM user_notify_settings WHERE user_id = ?').run(id);
   db.prepare('DELETE FROM user_carrier_credentials WHERE user_id = ?').run(id);
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
 }

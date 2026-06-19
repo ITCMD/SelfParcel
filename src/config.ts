@@ -45,16 +45,6 @@ export const config = {
   // e.g. https://parcels.example.com (trailing slash optional)
   baseUrl: str('APP_BASE_URL'),
 
-  ups: {
-    clientId: str('UPS_CLIENT_ID'),
-    clientSecret: str('UPS_CLIENT_SECRET'),
-    env: str('UPS_ENV', 'production') as 'production' | 'test',
-  },
-  fedex: {
-    clientId: str('FEDEX_CLIENT_ID'),
-    clientSecret: str('FEDEX_CLIENT_SECRET'),
-    env: str('FEDEX_ENV', 'production') as 'production' | 'test',
-  },
   scraper: {
     browserFallback: bool('SCRAPER_BROWSER_FALLBACK', true),
   },
@@ -63,24 +53,14 @@ export const config = {
     // Skip notifications on a package's first successful fetch, so adding old
     // packages doesn't fire off a burst.
     onFirstFetch: bool('NOTIFY_ON_FIRST_FETCH', false),
-    // Default trigger mode; overridable in the UI settings.
+    // Default trigger for new users; each user can change it in the UI.
     defaultTrigger: str('NOTIFY_TRIGGER', 'status_change') as
       | 'status_change'
       | 'every_event'
       | 'delivered_exceptions',
 
-    ntfy: {
-      url: str('NTFY_URL'), // full topic URL, e.g. https://ntfy.sh/my-parcels
-      token: str('NTFY_TOKEN'),
-    },
-    pushover: {
-      token: str('PUSHOVER_TOKEN'),
-      user: str('PUSHOVER_USER'),
-    },
-    gotify: {
-      url: str('GOTIFY_URL'), // base URL, e.g. https://gotify.example.com
-      token: str('GOTIFY_TOKEN'),
-    },
+    // Channel TARGETS are per-user (set in the UI). Only shared infrastructure
+    // lives here: the SMTP relay, the Apprise sidecar URL, and the VAPID keypair.
     smtp: {
       host: str('SMTP_HOST'),
       port: int('SMTP_PORT', 587),
@@ -88,17 +68,10 @@ export const config = {
       user: str('SMTP_USER'),
       pass: str('SMTP_PASS'),
       from: str('SMTP_FROM'),
-      to: str('SMTP_TO'),
-    },
-    webhook: {
-      url: str('WEBHOOK_URL'),
-      format: str('WEBHOOK_FORMAT', 'json') as 'json' | 'discord' | 'slack',
     },
     apprise: {
       // Apprise API "stateless" endpoint, e.g. http://apprise:8000/notify
       apiUrl: str('APPRISE_API_URL'),
-      // Comma-separated Apprise service URLs (ntfy://, pushover://, etc.)
-      urls: str('APPRISE_URLS'),
     },
     webpush: {
       publicKey: str('VAPID_PUBLIC_KEY'),

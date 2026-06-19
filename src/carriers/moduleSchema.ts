@@ -76,7 +76,6 @@ export interface ValidationResult {
 }
 
 const CODE_RE = /^[a-z0-9_-]{2,32}$/;
-const RESERVED_CODES = new Set(['ups', 'fedex']);
 
 function isStr(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0;
@@ -151,8 +150,6 @@ export function validateModule(
   }
   if (!isStr(m.code) || !CODE_RE.test(m.code)) {
     errors.push('code must match [a-z0-9_-], 2-32 chars');
-  } else if (RESERVED_CODES.has(m.code) && m.code !== opts.allowCode) {
-    errors.push(`code "${m.code}" is reserved by a built-in provider`);
   }
   if (!isStr(m.name)) errors.push('name is required');
   if (m.kind !== 'scraper' && m.kind !== 'json') {

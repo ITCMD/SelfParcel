@@ -351,37 +351,50 @@ $('#detail-modal').addEventListener('click', (e) => {
   if (e.target.id === 'detail-modal') $('#detail-modal').classList.add('hidden');
 });
 
-const CHANNEL_NAMES = {
-  ntfy: 'ntfy',
-  pushover: 'Pushover',
-  gotify: 'Gotify',
-  smtp: 'Email (SMTP)',
-  webhook: 'Webhook',
-  apprise: 'Apprise',
-  webpush: 'Browser push',
-};
+function setVal(sel, v) {
+  const el = $(sel);
+  if (el) el.value = v || '';
+}
 
-async function loadSettings() {
-  const data = await api('/api/notify/channels');
+async function loadNotify() {
+  const data = await api('/api/me/notify');
   $('#trigger-mode').value = data.trigger;
-
-  $('#channel-list').innerHTML = data.channels
-    .map((c) => {
-      const on = c.configured;
-      return `<div class="channel-row">
-          <span class="c-name">${CHANNEL_NAMES[c.id] || c.name}</span>
-          <span class="channel-state ${on ? 'on' : ''}"><span class="dot"></span>${on ? 'configured' : 'not set'}</span>
-        </div>`;
-    })
-    .join('');
-
+  const c = data.channels;
+  setVal('#ch-ntfy-url', c.ntfyUrl);
+  setVal('#ch-ntfy-token', c.ntfyToken);
+  setVal('#ch-po-token', c.pushoverToken);
+  setVal('#ch-po-user', c.pushoverUser);
+  setVal('#ch-go-url', c.gotifyUrl);
+  setVal('#ch-go-token', c.gotifyToken);
+  setVal('#ch-email', c.smtpTo);
+  setVal('#ch-wh-url', c.webhookUrl);
+  $('#ch-wh-format').value = c.webhookFormat || 'json';
+  setVal('#ch-apprise', c.appriseUrls);
+  $('#ch-email-note').textContent = data.infra.smtp ? '' : '— server email not set up';
+  $('#ch-apprise-note').textContent = data.infra.apprise ? '' : '— server Apprise not set up';
   updatePushUi(data);
+}
+
+function collectNotify() {
+  return {
+    trigger: $('#trigger-mode').value,
+    ntfyUrl: $('#ch-ntfy-url').value,
+    ntfyToken: $('#ch-ntfy-token').value,
+    pushoverToken: $('#ch-po-token').value,
+    pushoverUser: $('#ch-po-user').value,
+    gotifyUrl: $('#ch-go-url').value,
+    gotifyToken: $('#ch-go-token').value,
+    smtpTo: $('#ch-email').value,
+    webhookUrl: $('#ch-wh-url').value,
+    webhookFormat: $('#ch-wh-format').value,
+    appriseUrls: $('#ch-apprise').value,
+  };
 }
 
 function updatePushUi(data) {
   const hint = $('#push-hint');
   const btn = $('#push-toggle');
-  if (!data.webpushEnabled) {
+  if (!data.infra.webpush) {
     hint.textContent =
       'Web Push isn’t configured on the server (set VAPID keys). See the README.';
     btn.disabled = true;
@@ -446,37 +459,22 @@ async function disablePush() {
   }
 }
 
-// Per-user carrier keys (only when signed in).
+// Per-user carrier API keys (optional; presence = use the API).
 async function loadCredentials() {
-  const section = $('#creds-section');
-  if (AUTH_MODE === 'none') {
-    section.classList.add('hidden');
-    return;
-  }
-  let data;
-  try {
-    data = await api('/api/me/credentials');
-  } catch {
-    section.classList.add('hidden');
-    return;
-  }
-  section.classList.remove('hidden');
-  $('#creds-list').innerHTML = data.carriers
+  const { carriers } = await api('/api/me/credentials');
+  $('#creds-list').innerHTML = carriers
     .map((c) => {
       const status = c.hasOwn
-        ? `<span class="a-tag admin">your key</span>`
-        : c.hasGlobalFallback
-          ? `<span class="a-tag">server default</span>`
-          : `<span class="a-tag off">not set</span>`;
-      const envSel = `<select data-cenv="${c.code}">
-          <option value="production"${c.env === 'production' ? ' selected' : ''}>production</option>
-          <option value="test"${c.env === 'test' ? ' selected' : ''}>test</option>
-        </select>`;
+        ? '<span class="a-tag admin">using API</span>'
+        : '<span class="a-tag">scraping</span>';
       return `<div class="admin-row" data-cred="${c.code}">
         <span class="grow"><span class="a-name">${escapeHtml(c.name)}</span> ${status}</span>
         <input data-cid="${c.code}" placeholder="Client ID" autocomplete="off" />
         <input data-csec="${c.code}" type="password" placeholder="Client secret" autocomplete="off" />
-        ${envSel}
+        <select data-cenv="${c.code}">
+          <option value="production"${c.env === 'production' ? ' selected' : ''}>production</option>
+          <option value="test"${c.env === 'test' ? ' selected' : ''}>test</option>
+        </select>
         <span class="a-actions">
           <button class="btn small" data-credact="save" data-code="${c.code}">Save</button>
           ${c.hasOwn ? `<button class="btn small danger" data-credact="clear" data-code="${c.code}">Clear</button>` : ''}
@@ -492,12 +490,13 @@ $('#creds-list').addEventListener('click', async (e) => {
   const code = btn.dataset.code;
   try {
     if (btn.dataset.credact === 'save') {
-      const clientId = $(`[data-cid="${code}"]`).value.trim();
-      const clientSecret = $(`[data-csec="${code}"]`).value.trim();
-      const env = $(`[data-cenv="${code}"]`).value;
       await api(`/api/me/credentials/${code}`, {
         method: 'PUT',
-        body: JSON.stringify({ clientId, clientSecret, env }),
+        body: JSON.stringify({
+          clientId: $(`[data-cid="${code}"]`).value.trim(),
+          clientSecret: $(`[data-csec="${code}"]`).value.trim(),
+          env: $(`[data-cenv="${code}"]`).value,
+        }),
       });
     } else if (btn.dataset.credact === 'clear') {
       await api(`/api/me/credentials/${code}`, { method: 'DELETE' });
@@ -510,9 +509,9 @@ $('#creds-list').addEventListener('click', async (e) => {
 
 $('#open-settings').addEventListener('click', async () => {
   $('#settings-modal').classList.remove('hidden');
-  $('#test-result').textContent = '';
+  $('#notify-msg').textContent = '';
   await loadCredentials();
-  await loadSettings();
+  await loadNotify();
 });
 $('#settings-close').addEventListener('click', () => $('#settings-modal').classList.add('hidden'));
 $('#settings-modal').addEventListener('click', (e) => {
@@ -520,7 +519,18 @@ $('#settings-modal').addEventListener('click', (e) => {
 });
 
 $('#trigger-mode').addEventListener('change', async (e) => {
-  await api('/api/notify/trigger', { method: 'POST', body: JSON.stringify({ mode: e.target.value }) });
+  await api('/api/me/notify', { method: 'PUT', body: JSON.stringify({ trigger: e.target.value }) });
+});
+
+$('#notify-save').addEventListener('click', async () => {
+  const msg = $('#notify-msg');
+  try {
+    await api('/api/me/notify', { method: 'PUT', body: JSON.stringify(collectNotify()) });
+    msg.textContent = 'Saved.';
+    await loadNotify();
+  } catch (err) {
+    msg.textContent = err.message;
+  }
 });
 
 $('#push-toggle').addEventListener('click', async (e) => {
@@ -529,7 +539,7 @@ $('#push-toggle').addEventListener('click', async (e) => {
   try {
     if (btn.dataset.on) await disablePush();
     else await enablePush();
-    await loadSettings();
+    await loadNotify();
   } catch (err) {
     $('#push-hint').textContent = err.message;
   } finally {
@@ -538,10 +548,10 @@ $('#push-toggle').addEventListener('click', async (e) => {
 });
 
 $('#test-notify').addEventListener('click', async () => {
-  const out = $('#test-result');
+  const out = $('#notify-msg');
   out.textContent = 'Sending…';
   try {
-    const r = await api('/api/notify/test', { method: 'POST' });
+    const r = await api('/api/me/notify/test', { method: 'POST' });
     const sent = r.sent?.length || 0;
     const failed = r.failed?.length || 0;
     out.textContent = sent

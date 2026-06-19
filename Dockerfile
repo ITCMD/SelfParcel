@@ -1,6 +1,7 @@
 # Official Playwright image: ships Node 20, matching Chromium, and the system
 # libs the headless browser needs (the annoying part of running it in Docker).
-FROM mcr.microsoft.com/playwright:v1.47.2-jammy AS base
+# Keep this tag in lockstep with the "playwright" version in package.json.
+FROM mcr.microsoft.com/playwright:v1.61.0-jammy AS base
 WORKDIR /app
 
 # better-sqlite3 may need to compile a native addon; ensure build tools exist.

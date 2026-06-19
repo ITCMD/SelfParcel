@@ -1,16 +1,13 @@
 import { getProvider } from '../carriers/registry.js';
-import { resolveCredentials } from '../carriers/credentials.js';
+import { getApiProvider, hasApiProvider } from '../carriers/apiProviders.js';
+import { getUserCredentials } from '../db/credentials.js';
 import { NotFoundError } from '../carriers/types.js';
 import * as repo from '../db/repo.js';
 import type { PackageRow } from '../db/repo.js';
 import { config } from '../config.js';
-import { getTriggerMode } from '../db/settings.js';
-import {
-  anyChannelConfigured,
-  buildMessage,
-  dispatch,
-  shouldNotify,
-} from '../notify/index.js';
+import { getUserTrigger } from '../db/notify.js';
+import { listShares } from '../db/shares.js';
+import { buildMessage, dispatch, shouldNotify } from '../notify/index.js';
 
 // Runs a single package refresh: call the provider, persist the result, fire
 // notifications if warranted, and report what changed.
@@ -24,11 +21,16 @@ export interface RefreshOutcome {
 }
 
 export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
-  const provider = getProvider(pkg.carrier);
   try {
-    // Use the owner's saved keys, falling back to .env.
-    const creds = resolveCredentials(pkg.carrier, pkg.owner_user_id);
-    const result = await provider.track(pkg.tracking_number, creds);
+    // If the owner has API keys for this carrier, use the official API;
+    // otherwise fall back to the scraper module.
+    const creds = hasApiProvider(pkg.carrier)
+      ? getUserCredentials(pkg.owner_user_id, pkg.carrier)
+      : undefined;
+    const result =
+      creds && hasApiProvider(pkg.carrier)
+        ? await getApiProvider(pkg.carrier)!.track(pkg.tracking_number, creds)
+        : await getProvider(pkg.carrier).track(pkg.tracking_number);
     const previousStatus = pkg.status;
     const isFirstFetch = pkg.last_checked_at === null;
     const { newEvents } = repo.applyResult(pkg.id, result);
@@ -66,21 +68,26 @@ async function maybeNotify(
 ): Promise<boolean> {
   if (pkg.notify === 0) return false; // muted for this package
   if (ctx.isFirstFetch && !config.notify.onFirstFetch) return false;
-  if (!anyChannelConfigured()) return false;
 
-  if (
-    !shouldNotify(getTriggerMode(), {
+  // Notify the owner and everyone the package is shared with, each via their
+  // own trigger preference and channels.
+  const recipients = new Set<string>([pkg.owner_user_id]);
+  for (const s of listShares(pkg.id)) recipients.add(s.userId);
+
+  const msg = buildMessage(pkg, ctx.newStatus, ctx.latestEvent);
+  let notified = false;
+
+  for (const userId of recipients) {
+    const wanted = shouldNotify(getUserTrigger(userId), {
       statusChanged: ctx.statusChanged,
       newStatus: ctx.newStatus,
       newEvents: ctx.newEvents,
-    })
-  ) {
-    return false;
+    });
+    if (!wanted) continue;
+    await dispatch(msg, userId);
+    notified = true;
   }
-
-  const msg = buildMessage(pkg, ctx.newStatus, ctx.latestEvent);
-  await dispatch(msg);
-  return true;
+  return notified;
 }
 
 export async function refreshById(id: number): Promise<RefreshOutcome> {

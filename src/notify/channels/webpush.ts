@@ -1,6 +1,6 @@
 import webpush from 'web-push';
 import { config } from '../../config.js';
-import { listPushSubs, removePushSub } from '../../db/settings.js';
+import { listPushSubs, removePushSub } from '../../db/notify.js';
 import type { NotificationChannel } from '../types.js';
 
 // Browser push over the Web Push protocol (VAPID). The /api/push routes store
@@ -26,12 +26,16 @@ function ensureVapid(): boolean {
 export const webpushChannel: NotificationChannel = {
   id: 'webpush',
   name: 'Browser push',
-  isConfigured: () =>
-    Boolean(config.notify.webpush.publicKey && config.notify.webpush.privateKey),
+  isConfigured: (t) =>
+    Boolean(
+      config.notify.webpush.publicKey &&
+        config.notify.webpush.privateKey &&
+        listPushSubs(t.userId).length > 0,
+    ),
 
-  async send(msg) {
+  async send(msg, t) {
     if (!ensureVapid()) throw new Error('Web Push VAPID keys not configured');
-    const subs = listPushSubs();
+    const subs = listPushSubs(t.userId);
     if (subs.length === 0) return;
 
     const payload = JSON.stringify({

@@ -1,10 +1,8 @@
 import type { CarrierCode } from './types.js';
 import { enabledModules, modulesVersion } from './registry.js';
 
-// Guess the carrier from a tracking number's shape. Native carriers (UPS,
-// FedEx) match first for precedence (20-digit goes to FedEx, 22-digit to USPS),
-// then module patterns. Formats overlap, so the UI always lets the user
-// override.
+// Guess the carrier from a tracking number's shape, using each enabled module's
+// detect patterns. Formats overlap, so the UI always lets the user override.
 
 export function normalizeTrackingNumber(raw: string): string {
   return raw.replace(/\s+/g, '').toUpperCase();
@@ -15,20 +13,11 @@ interface Rule {
   re: RegExp;
 }
 
-// Hard-coded patterns for the OAuth providers
-const NATIVE: Rule[] = [
-  { code: 'ups', re: /^1Z[0-9A-Z]{16}$/ },
-  { code: 'ups', re: /^(T\d{10}|\d{9}|\d{26})$/ },
-  { code: 'fedex', re: /^\d{12}$/ },
-  { code: 'fedex', re: /^\d{15}$/ },
-  { code: 'fedex', re: /^\d{20}$/ },
-];
-
 let rules: Rule[] = [];
 let builtAt = -1;
 
 function rebuild(): void {
-  rules = [...NATIVE];
+  rules = [];
   for (const m of enabledModules()) {
     for (const d of m.module.detect) {
       try {

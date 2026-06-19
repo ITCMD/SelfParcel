@@ -1,5 +1,4 @@
 import { request } from 'undici';
-import { config } from '../../config.js';
 import { urgencyFor, type NotificationChannel } from '../types.js';
 
 // Pushover: POST form-encoded to the messages endpoint.
@@ -10,13 +9,13 @@ const PRIORITY = { low: '-1', normal: '0', high: '1' } as const;
 export const pushoverChannel: NotificationChannel = {
   id: 'pushover',
   name: 'Pushover',
-  isConfigured: () =>
-    Boolean(config.notify.pushover.token && config.notify.pushover.user),
+  isConfigured: (t) =>
+    Boolean(t.channels.pushoverToken && t.channels.pushoverUser),
 
-  async send(msg) {
+  async send(msg, t) {
     const form = new URLSearchParams({
-      token: config.notify.pushover.token,
-      user: config.notify.pushover.user,
+      token: t.channels.pushoverToken,
+      user: t.channels.pushoverUser,
       title: msg.title,
       message: msg.body,
       priority: PRIORITY[urgencyFor(msg.status)],

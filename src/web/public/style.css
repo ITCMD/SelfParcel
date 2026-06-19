@@ -683,6 +683,16 @@ select:focus {
 #trigger-mode {
   width: 100%;
 }
+.creds-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+@media (max-width: 540px) {
+  .creds-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .btn.muted-on {
   color: var(--st-ofd);
   border-color: var(--st-ofd);

@@ -45,20 +45,30 @@ export interface TrackingResult {
   raw?: unknown;
 }
 
-/** API credentials, resolved per package owner (falling back to .env). */
+export interface CarrierProvider {
+  code: CarrierCode;
+  name: string;
+  kind: 'api' | 'scraper';
+  isConfigured(): boolean;
+  track(trackingNumber: string): Promise<TrackingResult>;
+}
+
+/** OAuth API credentials a user supplies to use a carrier's official API. */
 export interface CarrierCredentials {
   clientId: string;
   clientSecret: string;
   env?: 'production' | 'test';
 }
 
-export interface CarrierProvider {
+/**
+ * An official-API provider (UPS, FedEx). Unlike CarrierProvider, it needs
+ * per-user credentials at call time, so it isn't a pre-built singleton in the
+ * registry; the tracking service invokes it directly when the owner has keys.
+ */
+export interface ApiProvider {
   code: CarrierCode;
   name: string;
-  kind: 'api' | 'scraper';
-  /** True when global (.env) config is set. Per-user creds can still work without it. */
-  isConfigured(): boolean;
-  track(trackingNumber: string, creds?: CarrierCredentials): Promise<TrackingResult>;
+  track(trackingNumber: string, creds: CarrierCredentials): Promise<TrackingResult>;
 }
 
 /** Thrown when a tracking number is well-formed but no data exists yet. */

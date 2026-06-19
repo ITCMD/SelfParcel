@@ -9,7 +9,6 @@ import { migrate } from './db/index.js';
 import { seedBuiltinModules } from './db/modules.js';
 import { reloadModules } from './carriers/registry.js';
 import { registerApiRoutes } from './routes/api.js';
-import { registerNotifyRoutes } from './routes/notify.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerModuleRoutes } from './routes/modules.js';
@@ -57,7 +56,6 @@ async function main(): Promise<void> {
   await registerAuthRoutes(app);
   await registerLocalAuthRoutes(app);
   await registerApiRoutes(app);
-  await registerNotifyRoutes(app);
   await registerMeRoutes(app);
   await registerAdminRoutes(app);
   await registerModuleRoutes(app);

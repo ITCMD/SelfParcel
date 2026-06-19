@@ -1,7 +1,9 @@
 import { db } from './index.js';
 import type { CarrierCredentials } from '../carriers/types.js';
 
-// Per-user carrier API credentials. UPS/FedEx only (the native API providers).
+// Per-user carrier API credentials. When a user has keys for a carrier, their
+// packages use that carrier's official API; otherwise they use the scraper.
+// user_id '' is the implicit single user when auth is off.
 
 interface CredRow {
   user_id: string;

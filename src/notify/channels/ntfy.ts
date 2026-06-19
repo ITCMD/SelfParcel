@@ -1,5 +1,4 @@
 import { request } from 'undici';
-import { config } from '../../config.js';
 import { urgencyFor, type NotificationChannel } from '../types.js';
 
 // ntfy: POST the body to the topic URL, metadata goes in headers.
@@ -10,20 +9,20 @@ const PRIORITY = { low: '2', normal: '3', high: '5' } as const;
 export const ntfyChannel: NotificationChannel = {
   id: 'ntfy',
   name: 'ntfy',
-  isConfigured: () => Boolean(config.notify.ntfy.url),
+  isConfigured: (t) => Boolean(t.channels.ntfyUrl),
 
-  async send(msg) {
+  async send(msg, t) {
     const headers: Record<string, string> = {
       Title: encodeHeader(msg.title),
       Priority: PRIORITY[urgencyFor(msg.status)],
     };
     if (msg.tags?.length) headers.Tags = msg.tags.join(',');
     if (msg.url) headers.Click = msg.url;
-    if (config.notify.ntfy.token) {
-      headers.Authorization = `Bearer ${config.notify.ntfy.token}`;
+    if (t.channels.ntfyToken) {
+      headers.Authorization = `Bearer ${t.channels.ntfyToken}`;
     }
 
-    const res = await request(config.notify.ntfy.url, {
+    const res = await request(t.channels.ntfyUrl, {
       method: 'POST',
       headers,
       body: msg.body,

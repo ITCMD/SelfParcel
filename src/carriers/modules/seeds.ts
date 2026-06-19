@@ -87,7 +87,72 @@ const speedpak: CarrierModule = {
   },
 };
 
+// UPS and FedEx are scrapers too (their APIs need a business account / lengthy
+// approval). Both tracking pages are JS-heavy, so the browser fallback does the
+// real work. Selectors are a best-effort starting point and will likely need
+// tuning in the Providers panel; these carriers also use bot protection that can
+// block a headless browser.
+const ups: CarrierModule = {
+  schema: MODULE_SCHEMA,
+  code: 'ups',
+  name: 'UPS',
+  kind: 'scraper',
+  detect: [{ pattern: '^1Z[0-9A-Z]{16}$' }, { pattern: '^(T\\d{10}|\\d{9}|\\d{26})$' }],
+  request: {
+    url: 'https://www.ups.com/track?loc=en_US&tracknum={tn}&requester=ST/trackdetails',
+    method: 'GET',
+    headers: { 'Accept-Language': 'en-US,en;q=0.9' },
+    timeoutMs: 30000,
+  },
+  notFound: ['could not (locate|find)', 'no tracking information', 'check the number'],
+  scraper: {
+    browser: {
+      enabled: true,
+      waitFor: '[class*="ups-milestone"], [class*="activity"], [data-test*="tracking"]',
+    },
+    rowSelector:
+      '[class*="ups-milestone"], [class*="activity_row"], [class*="tracking-history"] li, tbody tr',
+    fields: {
+      description: '[class*="status"], [class*="activity"], [class*="milestone"], td',
+      date: '[class*="date"], [class*="time"], time',
+      location: '[class*="location"], [class*="city"]',
+    },
+    banner: '[class*="ups-status"], [class*="package_status"], [class*="current-status"]',
+  },
+};
+
+const fedex: CarrierModule = {
+  schema: MODULE_SCHEMA,
+  code: 'fedex',
+  name: 'FedEx',
+  kind: 'scraper',
+  detect: [{ pattern: '^\\d{12}$' }, { pattern: '^\\d{15}$' }, { pattern: '^\\d{20}$' }],
+  request: {
+    url: 'https://www.fedex.com/fedextrack/?trknbr={tn}',
+    method: 'GET',
+    headers: { 'Accept-Language': 'en-US,en;q=0.9' },
+    timeoutMs: 30000,
+  },
+  notFound: ['unable to (locate|retrieve)', 'no record', 'check the number'],
+  scraper: {
+    browser: {
+      enabled: true,
+      waitFor: '[class*="travel-history"], [class*="scan-event"], [class*="status"]',
+    },
+    rowSelector:
+      '[class*="travel-history"] [class*="row"], [class*="scan-event"], [class*="activity"] li, tbody tr',
+    fields: {
+      description: '[class*="status"], [class*="scan"], [class*="activity"], td',
+      date: '[class*="date"], [class*="time"], time',
+      location: '[class*="location"], [class*="city"]',
+    },
+    banner: '[class*="redesignStatus"], [class*="package-status"], [class*="current-status"]',
+  },
+};
+
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
+  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '1', module: ups },
+  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '1', module: fedex },
   { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '1', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
 ];

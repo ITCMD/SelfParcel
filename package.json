@@ -23,7 +23,7 @@
     "fastify": "^4.28.1",
     "nodemailer": "^6.10.1",
     "openid-client": "^6.8.4",
-    "playwright": "^1.47.2",
+    "playwright": "1.61.0",
     "undici": "^6.19.8",
     "web-push": "^3.6.7"
   },

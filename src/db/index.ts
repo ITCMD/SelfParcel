@@ -101,7 +101,26 @@ export function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_shares_user ON package_shares(user_id);
 
-    -- Per-user carrier API credentials. Falls back to .env when absent.
+    -- Per-user notification channels + trigger. user_id '' is the implicit
+    -- single user when auth is off.
+    CREATE TABLE IF NOT EXISTS user_notify_settings (
+      user_id        TEXT PRIMARY KEY,
+      trigger        TEXT,
+      ntfy_url       TEXT,
+      ntfy_token     TEXT,
+      pushover_token TEXT,
+      pushover_user  TEXT,
+      gotify_url     TEXT,
+      gotify_token   TEXT,
+      webhook_url    TEXT,
+      webhook_format TEXT,
+      smtp_to        TEXT,
+      apprise_urls   TEXT,
+      updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Per-user carrier API keys. With keys, that carrier uses its official API;
+    -- without, it falls back to the scraper module. user_id '' = single user.
     CREATE TABLE IF NOT EXISTS user_carrier_credentials (
       user_id       TEXT NOT NULL,
       carrier       TEXT NOT NULL,
@@ -112,7 +131,7 @@ export function migrate(): void {
       PRIMARY KEY (user_id, carrier)
     );
 
-    -- Declarative carrier provider modules (UPS/FedEx remain native code).
+    -- Declarative carrier provider modules. Carriers are modules (scrapers).
     CREATE TABLE IF NOT EXISTS carrier_modules (
       code         TEXT PRIMARY KEY,
       name         TEXT NOT NULL,
@@ -132,6 +151,7 @@ export function migrate(): void {
   addColumnIfMissing('packages', 'notify', 'INTEGER NOT NULL DEFAULT 1');
   addColumnIfMissing('packages', 'owner_user_id', "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing('sessions', 'user_id', 'TEXT');
+  addColumnIfMissing('push_subscriptions', 'user_id', "TEXT NOT NULL DEFAULT ''");
 
   // Old DBs had UNIQUE(tracking_number, carrier). Rebuild without it so dedupe
   // is per owner.

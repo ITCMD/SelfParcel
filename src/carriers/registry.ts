@@ -1,17 +1,9 @@
 import { CARRIER_NAMES, type CarrierCode, type CarrierProvider } from './types.js';
-import { upsProvider } from './api/ups.js';
-import { fedexProvider } from './api/fedex.js';
 import { buildProviderFromModule } from './engine.js';
 import { listModules, type ParsedModule } from '../db/modules.js';
 
-// Dynamic carrier registry: native API providers (UPS, FedEx) plus module
-// providers loaded from the DB. Call reloadModules() after any change to the
-// carrier_modules table.
-
-const native: Record<string, CarrierProvider> = {
-  ups: upsProvider,
-  fedex: fedexProvider,
-};
+// Every carrier is a declarative module loaded from the DB. Call reloadModules()
+// after any change to the carrier_modules table.
 
 let moduleProviders = new Map<string, CarrierProvider>();
 let moduleMeta = new Map<string, ParsedModule>();
@@ -35,26 +27,21 @@ export function modulesVersion(): number {
 }
 
 export function getProvider(code: CarrierCode): CarrierProvider {
-  const p = native[code] ?? moduleProviders.get(code);
+  const p = moduleProviders.get(code);
   if (!p) throw new Error(`Unknown or disabled carrier: ${code}`);
   return p;
 }
 
 export function has(code: CarrierCode): boolean {
-  return Boolean(native[code] ?? moduleProviders.get(code));
+  return moduleProviders.has(code);
 }
 
 export function carrierName(code: CarrierCode): string {
-  return (
-    native[code]?.name ??
-    moduleMeta.get(code)?.name ??
-    CARRIER_NAMES[code] ??
-    code.toUpperCase()
-  );
+  return moduleMeta.get(code)?.name ?? CARRIER_NAMES[code] ?? code.toUpperCase();
 }
 
 export function allProviders(): CarrierProvider[] {
-  return [...Object.values(native), ...moduleProviders.values()];
+  return [...moduleProviders.values()];
 }
 
 /** Enabled module metadata, for detection ordering. */
@@ -63,15 +50,7 @@ export function enabledModules(): ParsedModule[] {
 }
 
 export function carrierStatuses() {
-  const nativeRows = Object.values(native).map((p) => ({
-    code: p.code,
-    name: p.name,
-    kind: p.kind,
-    configured: p.isConfigured(),
-    builtin: true,
-    source: 'native' as const,
-  }));
-  const moduleRows = [...moduleMeta.values()].map((m) => ({
+  return [...moduleMeta.values()].map((m) => ({
     code: m.code,
     name: m.name,
     kind: m.module.kind,
@@ -79,5 +58,4 @@ export function carrierStatuses() {
     builtin: Boolean(m.builtin),
     source: 'module' as const,
   }));
-  return [...nativeRows, ...moduleRows];
 }

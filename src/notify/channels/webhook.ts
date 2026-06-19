@@ -1,5 +1,4 @@
 import { request } from 'undici';
-import { config } from '../../config.js';
 import type { NotificationChannel } from '../types.js';
 
 // Generic webhook. Sends plain JSON by default, or Discord/Slack-shaped bodies
@@ -8,12 +7,12 @@ import type { NotificationChannel } from '../types.js';
 export const webhookChannel: NotificationChannel = {
   id: 'webhook',
   name: 'Webhook',
-  isConfigured: () => Boolean(config.notify.webhook.url),
+  isConfigured: (t) => Boolean(t.channels.webhookUrl),
 
-  async send(msg) {
+  async send(msg, t) {
     const text = msg.url ? `${msg.body}\n${msg.url}` : msg.body;
     let body: string;
-    switch (config.notify.webhook.format) {
+    switch (t.channels.webhookFormat) {
       case 'discord':
         body = JSON.stringify({ content: `**${msg.title}**\n${text}` });
         break;
@@ -30,7 +29,7 @@ export const webhookChannel: NotificationChannel = {
         });
     }
 
-    const res = await request(config.notify.webhook.url, {
+    const res = await request(t.channels.webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,

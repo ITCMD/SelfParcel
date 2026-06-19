@@ -6,50 +6,56 @@ everything in a local SQLite file, no third-party tracking service in the loop.
 
 ## How carriers work
 
-Not every carrier still has a usable free API, so SelfParcel uses two approaches
-behind one interface:
+By default every carrier (UPS, USPS, FedEx, SpeedPAK) is read by **scraping** its
+public tracking page, so it works with no API keys. The official APIs aren't
+practical for everyone: UPS needs a lengthy application, FedEx requires a
+business account, and USPS moved tracking to a paid commercial contract in
+Jan 2026.
 
-| Carrier | Method | Notes | Credentials |
-|---------|--------|-------|-------------|
-| UPS | Official API | Track API is free, recipient-side tracking allowed | [developer.ups.com](https://developer.ups.com) |
-| FedEx | Official API | Free, ~100k requests/day | [developer.fedex.com](https://developer.fedex.com) |
-| USPS | Scraper | Their tracking API went to a paid commercial contract in Jan 2026; the free account is testing/address only | none |
-| SpeedPAK | Scraper | No public API exists | none |
+For **UPS and FedEx**, if you do have API keys you can use the official API
+instead: each user adds their own keys under **Settings → Carrier API keys**.
+A package then uses its owner's keys when present, and falls back to the scraper
+otherwise. USPS and SpeedPAK are scrape-only.
 
 Scrapers are HTTP-first: a plain request first, and only spin up headless
 Chromium (Playwright) if the page needs JavaScript to render.
 
-The scrapers parse public HTML, which carriers change from time to time. If a
-tracking page gets redesigned you can fix the selectors from the Providers panel
-in the app without redeploying (see [Provider modules](#provider-modules)).
+> Public HTML changes over time, and the big carriers (UPS/FedEx especially) use
+> bot protection that can block a headless browser — the API is the more reliable
+> path when you have keys. The built-in scraper selectors are a best-effort
+> starting point; an admin can fix any carrier's selectors and test them from the
+> **Providers** panel without redeploying (see [Provider modules](#provider-modules)).
+
+### Getting UPS / FedEx API keys
+
+Both are free but involve some sign-up. Once you have the keys, add them in
+**Settings → Carrier API keys** (steps and portals can change over time):
+
+**UPS** ([developer.ups.com](https://developer.ups.com))
+1. Create/sign in to a UPS account, then open the UPS Developer Portal.
+2. Add an app to your account and request access to the **Tracking** API.
+3. Copy the app's **Client ID** and **Client Secret** into SelfParcel and set the
+   environment to **production**.
+
+**FedEx** ([developer.fedex.com](https://developer.fedex.com))
+1. Create/sign in to a FedEx account, then open the FedEx Developer Portal.
+2. Create a project and enable the **Track API**. New projects start in a test
+   sandbox; moving to production needs organization/business details.
+3. Copy the project's **API Key** (→ Client ID) and **Secret Key**
+   (→ Client Secret) into SelfParcel. Use **test** while in the sandbox,
+   **production** once approved.
+
+If the sign-up is more than you want to deal with, just skip it — that carrier
+keeps working via the scraper.
 
 ## Quick start (Docker)
 
 ```bash
-cp .env.example .env        # optional: add UPS/FedEx API keys
+cp .env.example .env        # optional; defaults work out of the box
 docker compose up -d --build
 ```
 
-Open <http://localhost:8080>. USPS and SpeedPAK work with no keys. UPS and FedEx
-stay off until you add credentials; the chips at the top of the page show what's
-ready.
-
-### API credentials
-
-These are the server-wide defaults. Put them in `.env` (read by
-`docker-compose.yml`) or pass them into the container:
-
-```
-UPS_CLIENT_ID=...
-UPS_CLIENT_SECRET=...
-FEDEX_CLIENT_ID=...
-FEDEX_CLIENT_SECRET=...
-```
-
-When auth is on, each signed-in user can also set their own UPS/FedEx keys under
-Settings. A package uses its owner's keys and falls back to these `.env` defaults
-when the owner hasn't set any. With `AUTH_MODE=none` there are no per-user keys,
-so everything uses the `.env` values.
+Open <http://localhost:8080>. All four carriers work with no configuration.
 
 ### Komodo / Portainer
 
@@ -87,14 +93,6 @@ services:
       # APP_BASE_URL: "https://parcels.example.com"   # used for notification links
       # SCRAPER_BROWSER_FALLBACK: "true"
 
-      # --- Carrier API keys (server-wide default; users can also set their own) ---
-      # UPS_CLIENT_ID: ""
-      # UPS_CLIENT_SECRET: ""
-      # UPS_ENV: "production"
-      # FEDEX_CLIENT_ID: ""
-      # FEDEX_CLIENT_SECRET: ""
-      # FEDEX_ENV: "production"
-
       # --- Authentication: none | local | oidc ---
       # AUTH_MODE: "none"
       # SESSION_SECRET: ""                # required for local/oidc; openssl rand -hex 32
@@ -108,27 +106,17 @@ services:
       # OIDC_ALLOWED_EMAILS: ""          # comma-separated
       # OIDC_ALLOWED_DOMAINS: ""         # comma-separated
 
-      # --- Notifications (all optional, fire together) ---
-      # NOTIFY_TRIGGER: "status_change"  # status_change | every_event | delivered_exceptions
+      # --- Notifications (infrastructure only; channel targets are per-user) ---
+      # NOTIFY_TRIGGER: "status_change"  # default for new users; status_change | every_event | delivered_exceptions
       # NOTIFY_ON_FIRST_FETCH: "false"
-      # NTFY_URL: ""
-      # NTFY_TOKEN: ""
-      # PUSHOVER_TOKEN: ""
-      # PUSHOVER_USER: ""
-      # GOTIFY_URL: ""
-      # GOTIFY_TOKEN: ""
-      # SMTP_HOST: ""
+      # SMTP_HOST: ""                    # relay the app sends through
       # SMTP_PORT: "587"
       # SMTP_SECURE: "false"
       # SMTP_USER: ""
       # SMTP_PASS: ""
       # SMTP_FROM: ""
-      # SMTP_TO: ""
-      # WEBHOOK_URL: ""
-      # WEBHOOK_FORMAT: "json"           # json | discord | slack
-      # APPRISE_API_URL: ""
-      # APPRISE_URLS: ""
-      # VAPID_PUBLIC_KEY: ""             # browser push; npm run gen:vapid
+      # APPRISE_API_URL: ""             # Apprise sidecar endpoint
+      # VAPID_PUBLIC_KEY: ""            # browser push; npm run gen:vapid
       # VAPID_PRIVATE_KEY: ""
       # VAPID_SUBJECT: "mailto:you@example.com"
 
@@ -141,25 +129,31 @@ container has a healthcheck on `/api/health` that both tools display.
 
 ## Notifications
 
-SelfParcel can ping you when a package moves. Configure any mix of channels via
-environment variables; they all fire together. Pick when to be notified in the
-Settings panel. These haven't been heavily tested, so file an issue if something
-misbehaves.
+SelfParcel can ping you when a package moves. Each user sets their own channels
+and trigger preference in the Settings panel; channels all fire together. When a
+package is shared, the owner and everyone it's shared with are each notified
+through their own channels. (Not heavily tested, so file an issue if something
+misbehaves.)
 
-| Channel | What you set | Notes |
-|---------|-------------|-------|
-| ntfy | `NTFY_URL`, `NTFY_TOKEN` | self-hostable |
-| Pushover | `PUSHOVER_TOKEN`, `PUSHOVER_USER` | |
-| Gotify | `GOTIFY_URL`, `GOTIFY_TOKEN` | self-hosted |
-| Email | `SMTP_HOST`, `SMTP_FROM`, `SMTP_TO`, ... | standard SMTP |
-| Webhook | `WEBHOOK_URL`, `WEBHOOK_FORMAT` | `json`, `discord`, or `slack` |
-| Apprise | `APPRISE_API_URL`, `APPRISE_URLS` | bridge to 80+ services via an [Apprise API](https://github.com/caronc/apprise-api) container |
-| Browser push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Web Push, see below |
+| Channel | What the user sets | Notes |
+|---------|-------------------|-------|
+| ntfy | topic URL, token | self-hostable |
+| Pushover | app token, user key | |
+| Gotify | server URL, app token | self-hosted |
+| Email | recipient address | uses the server's SMTP relay |
+| Webhook | URL, format | `json`, `discord`, or `slack` |
+| Apprise | target URLs | uses the server's [Apprise API](https://github.com/caronc/apprise-api) sidecar |
+| Browser push | enable per device | Web Push, see below |
 
-`NOTIFY_TRIGGER` (also settable in the UI) controls when notifications fire:
-`status_change` (default), `every_event`, or `delivered_exceptions`. Use the bell
-button on a package to mute it. The first successful fetch of a package is silent
-unless you set `NOTIFY_ON_FIRST_FETCH=true`.
+Only shared infrastructure is configured in env: the **SMTP relay**
+(`SMTP_HOST/PORT/SECURE/USER/PASS/FROM`), the **Apprise API URL**
+(`APPRISE_API_URL`), and the **VAPID keypair**. The per-person targets (ntfy
+topic, Pushover keys, email recipient, etc.) live in each user's settings.
+
+`NOTIFY_TRIGGER` sets the default trigger for new users (`status_change`,
+`every_event`, or `delivered_exceptions`); each user can change theirs in the UI.
+The owner's bell button mutes a package. The first successful fetch is silent
+unless `NOTIFY_ON_FIRST_FETCH=true`.
 
 ### Browser push
 
@@ -227,9 +221,9 @@ manage who it's shared with.
 
 ## Provider modules
 
-Carriers are data-driven. UPS and FedEx are native code (OAuth); USPS and
-SpeedPAK ship as built-in declarative modules. Admins manage everything from the
-Providers panel:
+Carriers are data-driven. UPS, FedEx, USPS, and SpeedPAK all ship as built-in
+declarative scraper modules (UPS and FedEx also have the optional official-API
+path described above). Admins manage everything from the Providers panel:
 
 - Edit the selectors of any module (including the built-in scrapers) in the UI,
   test against a real tracking number, and reset a built-in to its default.
@@ -285,13 +279,13 @@ All via environment variables; see [`.env.example`](.env.example).
 | `DATABASE_PATH` | `./data/selfparcel.sqlite` | SQLite file location |
 | `POLL_INTERVAL_MINUTES` | `30` | how often active packages refresh |
 | `MIN_REFRESH_MINUTES` | `10` | min age before a package is re-fetched |
-| `UPS_*`, `FEDEX_*` | | API credentials + `production`/`test` env |
 | `SCRAPER_BROWSER_FALLBACK` | `true` | allow the headless-browser fallback |
 | `AUTH_MODE` | `none` | `none`, `local`, or `oidc` |
 | `SESSION_SECRET` | | signs session cookies; required for local/oidc |
 | `OIDC_*` | | OIDC provider config |
 | `NOTIFY_TRIGGER` | `status_change` | default notify trigger (overridable in UI) |
-| `NTFY_*`, `PUSHOVER_*`, `GOTIFY_*`, `SMTP_*`, `WEBHOOK_*`, `APPRISE_*`, `VAPID_*` | | notification channels |
+| `NOTIFY_TRIGGER` | `status_change` | default trigger for new users |
+| `SMTP_*` (relay), `APPRISE_API_URL`, `VAPID_*` | | notification infrastructure (targets are per-user) |
 | `APP_BASE_URL` | | public URL, used for notification links |
 
 ## Layout
@@ -305,12 +299,13 @@ src/
   notify/               channels + dispatch + trigger rules
   carriers/
     types.ts            CarrierProvider interface + result types
-    detect.ts           carrier detection (native + modules)
-    registry.ts         native providers + DB modules
+    detect.ts           carrier detection from module patterns
+    registry.ts         providers built from DB modules
     moduleSchema.ts     module schema + validator
     engine.ts           runs a module as a provider
-    modules/seeds.ts    built-in USPS/SpeedPAK modules
-    api/{ups,fedex}.ts  native OAuth providers
+    modules/seeds.ts    built-in UPS/FedEx/USPS/SpeedPAK scraper modules
+    api/{ups,fedex}.ts  optional official-API providers (per-user keys)
+    apiProviders.ts     API provider registry
     scraper/browser.ts  shared headless Chromium
   db/                   SQLite schema + queries
   services/             refresh + background poller
@@ -318,9 +313,8 @@ src/
   web/public/           single-page UI (vanilla JS)
 ```
 
-Every provider implements `CarrierProvider.track()` and returns a normalized
-`TrackingResult`, so the rest of the app doesn't care whether the data came from
-an API or a scraped page.
+Every carrier is a declarative module run by the engine, which implements
+`CarrierProvider.track()` and returns a normalized `TrackingResult`.
 
 ## API
 
@@ -340,12 +334,14 @@ an API or a scraped page.
 | POST | `/api/packages/:id/leave` | recipient removes a shared package |
 | GET | `/api/share/candidates?q=` | users to share with, recent first |
 | GET | `/auth/me` | session `{mode, authenticated, user, isAdmin}` |
-| GET/PUT/DELETE | `/api/me/credentials[/:carrier]` | your own UPS/FedEx keys |
+| GET/PUT/DELETE | `/api/me/credentials[/:carrier]` | your own UPS/FedEx API keys |
+| GET/PUT | `/api/me/notify` | your channels + trigger |
+| POST | `/api/me/notify/test` | send yourself a test |
 | POST | `/auth/local-login`, `/auth/register` | local auth |
 | GET | `/auth/login`, `/auth/callback`, `/auth/logout` | OIDC flow |
 | (admin) | `/api/admin/users...` | user CRUD + registration toggle |
 | (admin) | `/api/admin/modules...` | module CRUD, install-url, validate, test, reset |
-| GET/POST | `/api/notify/*`, `/api/push/*` | notification settings + Web Push |
+| GET/POST | `/api/push/*` | Web Push key + subscribe |
 
 ## License
 

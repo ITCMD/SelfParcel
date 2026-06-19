@@ -9,14 +9,15 @@ import { urgencyFor, type NotificationChannel } from '../types.js';
 
 const TYPE = { low: 'info', normal: 'success', high: 'warning' } as const;
 
+// The Apprise API URL is server-wide; each user lists their own target URLs.
 export const appriseChannel: NotificationChannel = {
   id: 'apprise',
   name: 'Apprise',
-  isConfigured: () =>
-    Boolean(config.notify.apprise.apiUrl && config.notify.apprise.urls),
+  isConfigured: (t) =>
+    Boolean(config.notify.apprise.apiUrl && t.channels.appriseUrls),
 
-  async send(msg) {
-    const urls = config.notify.apprise.urls
+  async send(msg, t) {
+    const urls = t.channels.appriseUrls
       .split(',')
       .map((u) => u.trim())
       .filter(Boolean);

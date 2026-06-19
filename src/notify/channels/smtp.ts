@@ -20,17 +20,18 @@ function getTransporter(): Transporter {
   return transporter;
 }
 
+// The relay (host/from) is server-wide; each user supplies their own recipient.
 export const smtpChannel: NotificationChannel = {
   id: 'smtp',
-  name: 'Email (SMTP)',
-  isConfigured: () =>
-    Boolean(config.notify.smtp.host && config.notify.smtp.from && config.notify.smtp.to),
+  name: 'Email',
+  isConfigured: (t) =>
+    Boolean(config.notify.smtp.host && config.notify.smtp.from && t.channels.smtpTo),
 
-  async send(msg) {
+  async send(msg, t) {
     const text = msg.url ? `${msg.body}\n\n${msg.url}` : msg.body;
     await getTransporter().sendMail({
       from: config.notify.smtp.from,
-      to: config.notify.smtp.to,
+      to: t.channels.smtpTo,
       subject: msg.title,
       text,
     });

@@ -2,8 +2,8 @@ import { config } from '../config.js';
 import type { TrackStatus } from '../carriers/types.js';
 import { carrierName } from '../carriers/registry.js';
 import type { PackageRow } from '../db/repo.js';
-import type { TriggerMode } from '../db/settings.js';
-import type { NotificationChannel, NotificationMessage } from './types.js';
+import { getUserChannels, type TriggerMode } from '../db/notify.js';
+import type { NotificationChannel, NotificationMessage, NotifyTarget } from './types.js';
 import { ntfyChannel } from './channels/ntfy.js';
 import { pushoverChannel } from './channels/pushover.js';
 import { gotifyChannel } from './channels/gotify.js';
@@ -22,16 +22,23 @@ const channels: NotificationChannel[] = [
   webpushChannel,
 ];
 
-export function channelStatuses() {
+/** Server-side availability of the infrastructure-backed channels. */
+export function infraStatus() {
+  return {
+    smtp: Boolean(config.notify.smtp.host && config.notify.smtp.from),
+    apprise: Boolean(config.notify.apprise.apiUrl),
+    webpush: Boolean(config.notify.webpush.publicKey && config.notify.webpush.privateKey),
+  };
+}
+
+/** Which channels are configured for a given user. */
+export function channelStatuses(userId: string) {
+  const target: NotifyTarget = { userId, channels: getUserChannels(userId) };
   return channels.map((c) => ({
     id: c.id,
     name: c.name,
-    configured: c.isConfigured(),
+    configured: c.isConfigured(target),
   }));
-}
-
-export function anyChannelConfigured(): boolean {
-  return channels.some((c) => c.isConfigured());
 }
 
 interface SendResult {
@@ -39,15 +46,19 @@ interface SendResult {
   failed: { id: string; error: string }[];
 }
 
-/** Send a message to every configured channel. Never throws. */
-export async function dispatch(msg: NotificationMessage): Promise<SendResult> {
-  const active = channels.filter((c) => c.isConfigured());
+/** Send a message to all of a user's configured channels. Never throws. */
+export async function dispatch(
+  msg: NotificationMessage,
+  userId: string,
+): Promise<SendResult> {
+  const target: NotifyTarget = { userId, channels: getUserChannels(userId) };
+  const active = channels.filter((c) => c.isConfigured(target));
   const result: SendResult = { sent: [], failed: [] };
 
   await Promise.all(
     active.map(async (c) => {
       try {
-        await c.send(msg);
+        await c.send(msg, target);
         result.sent.push(c.id);
       } catch (err) {
         result.failed.push({

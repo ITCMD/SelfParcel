@@ -1,38 +1,25 @@
 import { request } from 'undici';
-import { config } from '../../config.js';
 import {
   classifyStatus,
   NotFoundError,
   ProviderUnavailableError,
+  type ApiProvider,
   type CarrierCredentials,
-  type CarrierProvider,
   type TrackingEvent,
   type TrackingResult,
 } from '../types.js';
 
-// UPS Track API. OAuth2 client-credentials, then a GET to the tracking
-// endpoint. Recipient-side tracking works, so we only need the developer app
-// credentials, not a shipper account.
-// Docs: https://developer.ups.com
+// UPS Track API. OAuth2 client-credentials, then a GET to the tracking endpoint.
+// Recipient-side tracking works, so only the developer app credentials are
+// needed. Docs: https://developer.ups.com
 
 const BASE = {
   production: 'https://onlinetools.ups.com',
   test: 'https://wwwcie.ups.com',
 };
 
-// Tokens cached per credential set so per-user keys don't collide.
+// Tokens cached per credential set so different users don't collide.
 const tokens = new Map<string, { value: string; expiresAt: number }>();
-
-// Use the passed creds, otherwise the .env defaults.
-function effective(creds?: CarrierCredentials): CarrierCredentials | null {
-  if (creds?.clientId && creds?.clientSecret) {
-    return { ...creds, env: creds.env ?? 'production' };
-  }
-  if (config.ups.clientId && config.ups.clientSecret) {
-    return { clientId: config.ups.clientId, clientSecret: config.ups.clientSecret, env: config.ups.env };
-  }
-  return null;
-}
 
 async function getToken(creds: CarrierCredentials): Promise<string> {
   const env = creds.env ?? 'production';
@@ -42,7 +29,6 @@ async function getToken(creds: CarrierCredentials): Promise<string> {
 
   const base = BASE[env] ?? BASE.production;
   const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
-
   const res = await request(`${base}/security/v1/oauth/token`, {
     method: 'POST',
     headers: {
@@ -51,7 +37,6 @@ async function getToken(creds: CarrierCredentials): Promise<string> {
     },
     body: 'grant_type=client_credentials',
   });
-
   if (res.statusCode !== 200) {
     const body = await res.body.text();
     throw new ProviderUnavailableError(`UPS auth failed (${res.statusCode}): ${body}`);
@@ -62,20 +47,12 @@ async function getToken(creds: CarrierCredentials): Promise<string> {
   return tok.value;
 }
 
-export const upsProvider: CarrierProvider = {
+export const upsApi: ApiProvider = {
   code: 'ups',
   name: 'UPS',
-  kind: 'api',
-  isConfigured: () => Boolean(config.ups.clientId && config.ups.clientSecret),
-
   async track(trackingNumber, creds): Promise<TrackingResult> {
-    const eff = effective(creds);
-    if (!eff) {
-      throw new ProviderUnavailableError('UPS API credentials not set');
-    }
-    const base = BASE[eff.env ?? 'production'] ?? BASE.production;
-    const accessToken = await getToken(eff);
-
+    const base = BASE[creds.env ?? 'production'] ?? BASE.production;
+    const accessToken = await getToken(creds);
     const res = await request(
       `${base}/api/track/v1/details/${encodeURIComponent(trackingNumber)}?locale=en_US`,
       {
@@ -87,7 +64,6 @@ export const upsProvider: CarrierProvider = {
         },
       },
     );
-
     const body = await res.body.json().catch(() => ({}));
     if (res.statusCode === 404) throw new NotFoundError('UPS: no data yet');
     if (res.statusCode !== 200) {
@@ -95,28 +71,24 @@ export const upsProvider: CarrierProvider = {
         `UPS track failed (${res.statusCode}): ${JSON.stringify(body)}`,
       );
     }
-
     return parseUps(trackingNumber, body);
   },
 };
 
 function parseUps(trackingNumber: string, body: any): TrackingResult {
-  const shipment = body?.trackResponse?.shipment?.[0];
-  const pkg = shipment?.package?.[0];
+  const pkg = body?.trackResponse?.shipment?.[0]?.package?.[0];
   if (!pkg) throw new NotFoundError('UPS: empty response');
 
   const events: TrackingEvent[] = (pkg.activity ?? []).map((a: any) => {
     const desc = a?.status?.description ?? a?.status?.statusType?.description ?? 'Update';
-    const loc = formatUpsLocation(a?.location?.address);
     return {
       timestamp: parseUpsDate(a?.date, a?.time),
       status: classifyStatus(desc),
       description: desc,
-      location: loc,
+      location: formatUpsLocation(a?.location?.address),
     } satisfies TrackingEvent;
   });
 
-  const latest = events[0];
   const est =
     pkg?.deliveryDate?.find((d: any) => d.type === 'SDD')?.date ??
     pkg?.deliveryDate?.[0]?.date ??
@@ -125,7 +97,7 @@ function parseUps(trackingNumber: string, body: any): TrackingResult {
   return {
     trackingNumber,
     carrier: 'ups',
-    status: latest?.status ?? 'unknown',
+    status: events[0]?.status ?? 'unknown',
     estimatedDelivery: parseUpsDate(est, null),
     events,
     source: 'api',
@@ -144,8 +116,9 @@ function parseUpsDate(date?: string | null, time?: string | null): string | null
   const y = date.slice(0, 4);
   const m = date.slice(4, 6);
   const d = date.slice(6, 8);
-  const t = time && /^\d{6}$/.test(time)
-    ? `${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`
-    : '00:00:00';
+  const t =
+    time && /^\d{6}$/.test(time)
+      ? `${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`
+      : '00:00:00';
   return `${y}-${m}-${d}T${t}`;
 }
