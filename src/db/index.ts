@@ -22,10 +22,11 @@ export function migrate(): void {
       status          TEXT    NOT NULL DEFAULT 'unknown',
       est_delivery    TEXT,
       archived        INTEGER NOT NULL DEFAULT 0,
+      notify          INTEGER NOT NULL DEFAULT 1,
+      owner_user_id   TEXT    NOT NULL DEFAULT '',
       last_checked_at TEXT,
       last_error      TEXT,
-      created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (tracking_number, carrier)
+      created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS events (
@@ -91,6 +92,17 @@ export function migrate(): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
       ON users(username) WHERE username IS NOT NULL;
 
+    -- Per-user carrier API credentials. Falls back to .env when absent.
+    CREATE TABLE IF NOT EXISTS user_carrier_credentials (
+      user_id       TEXT NOT NULL,
+      carrier       TEXT NOT NULL,
+      client_id     TEXT NOT NULL,
+      client_secret TEXT NOT NULL,
+      env           TEXT,
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, carrier)
+    );
+
     -- Declarative carrier provider modules (UPS/FedEx remain native code).
     CREATE TABLE IF NOT EXISTS carrier_modules (
       code         TEXT PRIMARY KEY,
@@ -107,15 +119,68 @@ export function migrate(): void {
     );
   `);
 
-  // Per-package mute flag, added after v1.
+  // Columns added after v1 (no-ops once present).
   addColumnIfMissing('packages', 'notify', 'INTEGER NOT NULL DEFAULT 1');
-  // Sessions link to a persistent user row; old sub/email/name columns stay for now.
+  addColumnIfMissing('packages', 'owner_user_id', "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing('sessions', 'user_id', 'TEXT');
+
+  // Old DBs had UNIQUE(tracking_number, carrier). Rebuild without it so dedupe
+  // is per owner.
+  rebuildLegacyPackages();
+
+  // Per-owner dedupe (created here so owner_user_id exists on upgraded DBs too).
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_packages_dedupe
+    ON packages(owner_user_id, tracking_number, carrier)`);
 }
 
 function addColumnIfMissing(table: string, column: string, definition: string): void {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!cols.some((c) => c.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function rebuildLegacyPackages(): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'packages'")
+    .get() as { sql: string } | undefined;
+  if (!row || !/UNIQUE\s*\(\s*tracking_number\s*,\s*carrier\s*\)/i.test(row.sql)) {
+    return; // already on the new shape
+  }
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE packages_new (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          tracking_number TEXT    NOT NULL,
+          carrier         TEXT    NOT NULL,
+          label           TEXT,
+          status          TEXT    NOT NULL DEFAULT 'unknown',
+          est_delivery    TEXT,
+          archived        INTEGER NOT NULL DEFAULT 0,
+          notify          INTEGER NOT NULL DEFAULT 1,
+          owner_user_id   TEXT    NOT NULL DEFAULT '',
+          last_checked_at TEXT,
+          last_error      TEXT,
+          created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO packages_new
+          (id, tracking_number, carrier, label, status, est_delivery, archived,
+           notify, owner_user_id, last_checked_at, last_error, created_at)
+          SELECT id, tracking_number, carrier, label, status, est_delivery, archived,
+                 COALESCE(notify, 1), COALESCE(owner_user_id, ''),
+                 last_checked_at, last_error, created_at
+          FROM packages;
+        DROP TABLE packages;
+        ALTER TABLE packages_new RENAME TO packages;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_packages_dedupe
+          ON packages(owner_user_id, tracking_number, carrier);
+        CREATE INDEX IF NOT EXISTS idx_packages_active ON packages(archived, status);
+      `);
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
   }
 }

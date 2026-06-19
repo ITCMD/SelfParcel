@@ -4,6 +4,7 @@ import {
   classifyStatus,
   NotFoundError,
   ProviderUnavailableError,
+  type CarrierCredentials,
   type CarrierProvider,
   type TrackingEvent,
   type TrackingResult,
@@ -18,16 +19,30 @@ const BASE = {
   test: 'https://apis-sandbox.fedex.com',
 };
 
-let token: { value: string; expiresAt: number } | null = null;
+// Tokens cached per credential set so per-user keys don't collide.
+const tokens = new Map<string, { value: string; expiresAt: number }>();
 
-async function getToken(): Promise<string> {
-  if (token && token.expiresAt > Date.now() + 30_000) return token.value;
+function effective(creds?: CarrierCredentials): CarrierCredentials | null {
+  if (creds?.clientId && creds?.clientSecret) {
+    return { ...creds, env: creds.env ?? 'production' };
+  }
+  if (config.fedex.clientId && config.fedex.clientSecret) {
+    return { clientId: config.fedex.clientId, clientSecret: config.fedex.clientSecret, env: config.fedex.env };
+  }
+  return null;
+}
 
-  const base = BASE[config.fedex.env] ?? BASE.production;
+async function getToken(creds: CarrierCredentials): Promise<string> {
+  const env = creds.env ?? 'production';
+  const key = `${env}:${creds.clientId}`;
+  const cached = tokens.get(key);
+  if (cached && cached.expiresAt > Date.now() + 30_000) return cached.value;
+
+  const base = BASE[env] ?? BASE.production;
   const params = new URLSearchParams({
     grant_type: 'client_credentials',
-    client_id: config.fedex.clientId,
-    client_secret: config.fedex.clientSecret,
+    client_id: creds.clientId,
+    client_secret: creds.clientSecret,
   });
 
   const res = await request(`${base}/oauth/token`, {
@@ -41,11 +56,9 @@ async function getToken(): Promise<string> {
     throw new ProviderUnavailableError(`FedEx auth failed (${res.statusCode}): ${body}`);
   }
   const json = (await res.body.json()) as { access_token: string; expires_in: number };
-  token = {
-    value: json.access_token,
-    expiresAt: Date.now() + json.expires_in * 1000,
-  };
-  return token.value;
+  const tok = { value: json.access_token, expiresAt: Date.now() + json.expires_in * 1000 };
+  tokens.set(key, tok);
+  return tok.value;
 }
 
 export const fedexProvider: CarrierProvider = {
@@ -54,12 +67,13 @@ export const fedexProvider: CarrierProvider = {
   kind: 'api',
   isConfigured: () => Boolean(config.fedex.clientId && config.fedex.clientSecret),
 
-  async track(trackingNumber): Promise<TrackingResult> {
-    if (!this.isConfigured()) {
+  async track(trackingNumber, creds): Promise<TrackingResult> {
+    const eff = effective(creds);
+    if (!eff) {
       throw new ProviderUnavailableError('FedEx API credentials not set');
     }
-    const base = BASE[config.fedex.env] ?? BASE.production;
-    const accessToken = await getToken();
+    const base = BASE[eff.env ?? 'production'] ?? BASE.production;
+    const accessToken = await getToken(eff);
 
     const res = await request(`${base}/track/v1/trackingnumbers`, {
       method: 'POST',

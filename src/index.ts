@@ -10,6 +10,7 @@ import { seedBuiltinModules } from './db/modules.js';
 import { reloadModules } from './carriers/registry.js';
 import { registerApiRoutes } from './routes/api.js';
 import { registerNotifyRoutes } from './routes/notify.js';
+import { registerMeRoutes } from './routes/me.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerModuleRoutes } from './routes/modules.js';
 import { registerAuthGuard, registerAuthRoutes } from './auth/routes.js';
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   await registerLocalAuthRoutes(app);
   await registerApiRoutes(app);
   await registerNotifyRoutes(app);
+  await registerMeRoutes(app);
   await registerAdminRoutes(app);
   await registerModuleRoutes(app);
 

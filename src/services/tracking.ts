@@ -1,4 +1,5 @@
 import { getProvider } from '../carriers/registry.js';
+import { resolveCredentials } from '../carriers/credentials.js';
 import { NotFoundError } from '../carriers/types.js';
 import * as repo from '../db/repo.js';
 import type { PackageRow } from '../db/repo.js';
@@ -25,7 +26,9 @@ export interface RefreshOutcome {
 export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
   const provider = getProvider(pkg.carrier);
   try {
-    const result = await provider.track(pkg.tracking_number);
+    // Use the owner's saved keys, falling back to .env.
+    const creds = resolveCredentials(pkg.carrier, pkg.owner_user_id);
+    const result = await provider.track(pkg.tracking_number, creds);
     const previousStatus = pkg.status;
     const isFirstFetch = pkg.last_checked_at === null;
     const { newEvents } = repo.applyResult(pkg.id, result);

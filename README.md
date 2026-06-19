@@ -36,7 +36,8 @@ ready.
 
 ### API credentials
 
-Put them in `.env` (read by `docker-compose.yml`) or pass them into the container:
+These are the server-wide defaults. Put them in `.env` (read by
+`docker-compose.yml`) or pass them into the container:
 
 ```
 UPS_CLIENT_ID=...
@@ -44,6 +45,11 @@ UPS_CLIENT_SECRET=...
 FEDEX_CLIENT_ID=...
 FEDEX_CLIENT_SECRET=...
 ```
+
+When auth is on, each signed-in user can also set their own UPS/FedEx keys under
+Settings. A package uses its owner's keys and falls back to these `.env` defaults
+when the owner hasn't set any. With `AUTH_MODE=none` there are no per-user keys,
+so everything uses the `.env` values.
 
 ### Komodo / Portainer
 
@@ -201,6 +207,7 @@ All via environment variables; see [`.env.example`](.env.example).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `TZ` | `UTC` | container timezone, e.g. `America/New_York` |
 | `PORT` | `8080` | HTTP port |
 | `DATABASE_PATH` | `./data/selfparcel.sqlite` | SQLite file location |
 | `POLL_INTERVAL_MINUTES` | `30` | how often active packages refresh |
@@ -257,6 +264,7 @@ an API or a scraped page.
 | POST | `/api/packages/:id/notify` | mute/unmute `{notify}` |
 | DELETE | `/api/packages/:id` | delete package + history |
 | GET | `/auth/me` | session `{mode, authenticated, user, isAdmin}` |
+| GET/PUT/DELETE | `/api/me/credentials[/:carrier]` | your own UPS/FedEx keys |
 | POST | `/auth/local-login`, `/auth/register` | local auth |
 | GET | `/auth/login`, `/auth/callback`, `/auth/logout` | OIDC flow |
 | (admin) | `/api/admin/users...` | user CRUD + registration toggle |

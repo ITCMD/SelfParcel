@@ -4,6 +4,7 @@ import {
   classifyStatus,
   NotFoundError,
   ProviderUnavailableError,
+  type CarrierCredentials,
   type CarrierProvider,
   type TrackingEvent,
   type TrackingResult,
@@ -19,20 +20,33 @@ const BASE = {
   test: 'https://wwwcie.ups.com',
 };
 
-let token: { value: string; expiresAt: number } | null = null;
+// Tokens cached per credential set so per-user keys don't collide.
+const tokens = new Map<string, { value: string; expiresAt: number }>();
 
-async function getToken(): Promise<string> {
-  if (token && token.expiresAt > Date.now() + 30_000) return token.value;
+// Use the passed creds, otherwise the .env defaults.
+function effective(creds?: CarrierCredentials): CarrierCredentials | null {
+  if (creds?.clientId && creds?.clientSecret) {
+    return { ...creds, env: creds.env ?? 'production' };
+  }
+  if (config.ups.clientId && config.ups.clientSecret) {
+    return { clientId: config.ups.clientId, clientSecret: config.ups.clientSecret, env: config.ups.env };
+  }
+  return null;
+}
 
-  const base = BASE[config.ups.env] ?? BASE.production;
-  const creds = Buffer.from(
-    `${config.ups.clientId}:${config.ups.clientSecret}`,
-  ).toString('base64');
+async function getToken(creds: CarrierCredentials): Promise<string> {
+  const env = creds.env ?? 'production';
+  const key = `${env}:${creds.clientId}`;
+  const cached = tokens.get(key);
+  if (cached && cached.expiresAt > Date.now() + 30_000) return cached.value;
+
+  const base = BASE[env] ?? BASE.production;
+  const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
 
   const res = await request(`${base}/security/v1/oauth/token`, {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${creds}`,
+      Authorization: `Basic ${basic}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: 'grant_type=client_credentials',
@@ -43,11 +57,9 @@ async function getToken(): Promise<string> {
     throw new ProviderUnavailableError(`UPS auth failed (${res.statusCode}): ${body}`);
   }
   const json = (await res.body.json()) as { access_token: string; expires_in: string };
-  token = {
-    value: json.access_token,
-    expiresAt: Date.now() + Number(json.expires_in) * 1000,
-  };
-  return token.value;
+  const tok = { value: json.access_token, expiresAt: Date.now() + Number(json.expires_in) * 1000 };
+  tokens.set(key, tok);
+  return tok.value;
 }
 
 export const upsProvider: CarrierProvider = {
@@ -56,12 +68,13 @@ export const upsProvider: CarrierProvider = {
   kind: 'api',
   isConfigured: () => Boolean(config.ups.clientId && config.ups.clientSecret),
 
-  async track(trackingNumber): Promise<TrackingResult> {
-    if (!this.isConfigured()) {
+  async track(trackingNumber, creds): Promise<TrackingResult> {
+    const eff = effective(creds);
+    if (!eff) {
       throw new ProviderUnavailableError('UPS API credentials not set');
     }
-    const base = BASE[config.ups.env] ?? BASE.production;
-    const accessToken = await getToken();
+    const base = BASE[eff.env ?? 'production'] ?? BASE.production;
+    const accessToken = await getToken(eff);
 
     const res = await request(
       `${base}/api/track/v1/details/${encodeURIComponent(trackingNumber)}?locale=en_US`,

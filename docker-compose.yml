@@ -19,12 +19,14 @@ services:
       retries: 3
       start_period: 20s
     environment:
+      TZ: "${TZ:-UTC}"
       PORT: "8080"
       DATABASE_PATH: /data/selfparcel.sqlite
       POLL_INTERVAL_MINUTES: "30"
       MIN_REFRESH_MINUTES: "10"
-      # Carrier API credentials (UPS + FedEx). Leave blank to disable that
-      # carrier's official API. USPS & SpeedPAK need no keys (browser emulation).
+      # Default carrier API credentials (UPS + FedEx). These are the fallback;
+      # each signed-in user can also set their own keys in the app. USPS and
+      # SpeedPAK need no keys.
       UPS_CLIENT_ID: "${UPS_CLIENT_ID:-}"
       UPS_CLIENT_SECRET: "${UPS_CLIENT_SECRET:-}"
       UPS_ENV: "${UPS_ENV:-production}"

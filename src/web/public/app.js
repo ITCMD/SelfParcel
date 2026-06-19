@@ -343,9 +343,72 @@ async function disablePush() {
   }
 }
 
+// Per-user carrier keys (only when signed in).
+async function loadCredentials() {
+  const section = $('#creds-section');
+  if (AUTH_MODE === 'none') {
+    section.classList.add('hidden');
+    return;
+  }
+  let data;
+  try {
+    data = await api('/api/me/credentials');
+  } catch {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  $('#creds-list').innerHTML = data.carriers
+    .map((c) => {
+      const status = c.hasOwn
+        ? `<span class="a-tag admin">your key</span>`
+        : c.hasGlobalFallback
+          ? `<span class="a-tag">server default</span>`
+          : `<span class="a-tag off">not set</span>`;
+      const envSel = `<select data-cenv="${c.code}">
+          <option value="production"${c.env === 'production' ? ' selected' : ''}>production</option>
+          <option value="test"${c.env === 'test' ? ' selected' : ''}>test</option>
+        </select>`;
+      return `<div class="admin-row" data-cred="${c.code}">
+        <span class="grow"><span class="a-name">${escapeHtml(c.name)}</span> ${status}</span>
+        <input data-cid="${c.code}" placeholder="Client ID" autocomplete="off" />
+        <input data-csec="${c.code}" type="password" placeholder="Client secret" autocomplete="off" />
+        ${envSel}
+        <span class="a-actions">
+          <button class="btn small" data-credact="save" data-code="${c.code}">Save</button>
+          ${c.hasOwn ? `<button class="btn small danger" data-credact="clear" data-code="${c.code}">Clear</button>` : ''}
+        </span>
+      </div>`;
+    })
+    .join('');
+}
+
+$('#creds-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-credact]');
+  if (!btn) return;
+  const code = btn.dataset.code;
+  try {
+    if (btn.dataset.credact === 'save') {
+      const clientId = $(`[data-cid="${code}"]`).value.trim();
+      const clientSecret = $(`[data-csec="${code}"]`).value.trim();
+      const env = $(`[data-cenv="${code}"]`).value;
+      await api(`/api/me/credentials/${code}`, {
+        method: 'PUT',
+        body: JSON.stringify({ clientId, clientSecret, env }),
+      });
+    } else if (btn.dataset.credact === 'clear') {
+      await api(`/api/me/credentials/${code}`, { method: 'DELETE' });
+    }
+    await loadCredentials();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 $('#open-settings').addEventListener('click', async () => {
   $('#settings-modal').classList.remove('hidden');
   $('#test-result').textContent = '';
+  await loadCredentials();
   await loadSettings();
 });
 $('#settings-close').addEventListener('click', () => $('#settings-modal').classList.add('hidden'));

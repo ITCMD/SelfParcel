@@ -11,6 +11,7 @@ export interface PackageRow {
   est_delivery: string | null;
   archived: number;
   notify: number;
+  owner_user_id: string;
   last_checked_at: string | null;
   last_error: string | null;
   created_at: string;
@@ -26,11 +27,19 @@ export interface EventRow {
   dedupe_key: string;
 }
 
-export function listPackages(includeArchived = false): PackageRow[] {
-  const sql = includeArchived
-    ? 'SELECT * FROM packages ORDER BY created_at DESC'
-    : 'SELECT * FROM packages WHERE archived = 0 ORDER BY created_at DESC';
-  return db.prepare(sql).all() as PackageRow[];
+// ownerId: undefined = no scoping (auth off); a string scopes to that owner.
+export function listPackages(includeArchived = false, ownerId?: string): PackageRow[] {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (!includeArchived) where.push('archived = 0');
+  if (ownerId !== undefined) {
+    where.push('owner_user_id = ?');
+    params.push(ownerId);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return db
+    .prepare(`SELECT * FROM packages ${clause} ORDER BY created_at DESC`)
+    .all(...params) as PackageRow[];
 }
 
 export function getPackage(id: number): PackageRow | undefined {
@@ -52,17 +61,19 @@ export function addPackage(input: {
   trackingNumber: string;
   carrier: CarrierCode;
   label?: string | null;
+  ownerId?: string | null;
 }): PackageRow {
   const stmt = db.prepare(
-    `INSERT INTO packages (tracking_number, carrier, label)
-     VALUES (@trackingNumber, @carrier, @label)
-     ON CONFLICT (tracking_number, carrier) DO UPDATE SET archived = 0
+    `INSERT INTO packages (tracking_number, carrier, label, owner_user_id)
+     VALUES (@trackingNumber, @carrier, @label, @owner)
+     ON CONFLICT (owner_user_id, tracking_number, carrier) DO UPDATE SET archived = 0
      RETURNING *`,
   );
   return stmt.get({
     trackingNumber: input.trackingNumber,
     carrier: input.carrier,
     label: input.label ?? null,
+    owner: input.ownerId ?? '',
   }) as PackageRow;
 }
 

@@ -181,8 +181,14 @@
     <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-content">
         <button class="modal-close" id="settings-close" aria-label="Close">×</button>
-        <h2>Notifications</h2>
-        <div class="modal-sub">Where and when SelfParcel pings you</div>
+        <h2>Settings</h2>
+        <div class="modal-sub">Notifications and your carrier keys</div>
+
+        <div id="creds-section" class="hidden">
+          <div class="log-head">Your carrier API keys</div>
+          <p class="hint">Used for your own packages. Leave blank to use the server default.</p>
+          <div id="creds-list" class="user-list"></div>
+        </div>
 
         <div class="log-head">When to notify</div>
         <div class="field">
