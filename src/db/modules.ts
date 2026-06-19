@@ -92,16 +92,27 @@ export function countPackagesForCarrier(code: string): number {
   ).n;
 }
 
-/** Insert built-in seeds only when missing, so we never clobber edits. */
+/**
+ * Insert built-in seeds when missing, and upgrade a built-in in place when its
+ * seed_version changes (so deployed instances pick up improved selectors). An
+ * upgrade keeps the module's enabled flag. Custom (non-builtin) rows are never
+ * touched.
+ */
 export function seedBuiltinModules(): void {
   for (const seed of BUILTIN_SEEDS) {
-    if (getModule(seed.code)) continue;
-    upsertModule({
-      module: seed.module,
-      enabled: true,
-      builtin: true,
-      seedVersion: seed.seedVersion,
-    });
+    const existing = getModule(seed.code);
+    if (!existing) {
+      upsertModule({ module: seed.module, enabled: true, builtin: true, seedVersion: seed.seedVersion });
+      continue;
+    }
+    if (existing.builtin && existing.seed_version !== seed.seedVersion) {
+      upsertModule({
+        module: seed.module,
+        enabled: Boolean(existing.enabled),
+        builtin: true,
+        seedVersion: seed.seedVersion,
+      });
+    }
   }
 }
 

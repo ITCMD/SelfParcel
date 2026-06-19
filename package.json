@@ -24,6 +24,8 @@
     "nodemailer": "^6.10.1",
     "openid-client": "^6.8.4",
     "playwright": "1.61.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "undici": "^6.19.8",
     "web-push": "^3.6.7"
   },

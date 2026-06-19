@@ -81,11 +81,16 @@ export async function assertPublicUrl(
 }
 
 // undici dispatcher that forces DNS to the vetted IP so the socket can only
-// connect to the address we validated
+// connect to the address we validated. undici may call lookup with `{all:true}`
+// (expects an array) or the single-address form, so handle both.
 function pinnedDispatcher(ip: string): Dispatcher {
+  const family = net.isIP(ip) || 4;
   return new Agent({
     connect: {
-      lookup: (_hostname, _options, cb) => cb(null, ip, net.isIP(ip) || 4),
+      lookup: (_hostname: string, options: any, cb: any) => {
+        if (options && options.all) cb(null, [{ address: ip, family }]);
+        else cb(null, ip, family);
+      },
     },
   });
 }

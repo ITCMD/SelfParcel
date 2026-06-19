@@ -11,7 +11,26 @@ import {
 } from './types.js';
 import { fetchRenderedHtml } from './scraper/browser.js';
 import { assertPublicUrl, safeRequest } from '../net/safeFetch.js';
+import { getSetting, setSetting } from '../db/settings.js';
 import type { CarrierModule, FieldMap, FastJsonSpec } from './moduleSchema.js';
+
+// Render a module's tracking page in the stealth browser, replaying and saving
+// the carrier's session (cookies) so a hard-won bot-clearance is reused.
+async function renderWithSession(module: CarrierModule, url: string): Promise<string> {
+  const spec = module.scraper!;
+  const key = `session:${module.code}`;
+  const { html, storageState } = await fetchRenderedHtml(url, {
+    waitFor: spec.browser?.waitFor,
+    warmupUrl: spec.browser?.warmupUrl,
+    storageState: getSetting(key) || undefined,
+    timeoutMs: module.request.timeoutMs,
+    guard: async (target) => {
+      await assertPublicUrl(target);
+    },
+  });
+  if (storageState) setSetting(key, storageState);
+  return html;
+}
 
 // Turns a validated declarative module into a CarrierProvider. Module-supplied
 // code is never executed; we only interpret regexes, CSS selectors, and dotted
@@ -107,13 +126,12 @@ function summarize(
   };
 }
 
-function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browser'): TrackingResult | null {
+// Pull events + banner from loaded HTML. No throwing; callers decide.
+function extractFromHtml(
+  module: CarrierModule,
+  $: cheerio.CheerioAPI,
+): { events: TrackingEvent[]; banner: string } {
   const spec = module.scraper!;
-  const $ = cheerio.load(html);
-  if (matchesNotFound(module, $.text())) {
-    throw new NotFoundError(`${module.name}: status not available yet`);
-  }
-
   const events: TrackingEvent[] = [];
   $(spec.rowSelector).each((_i, el) => {
     const $el = $(el);
@@ -130,10 +148,133 @@ function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browse
       location: location || undefined,
     });
   });
-
   const banner = spec.banner ? clean($(spec.banner).first().text()) : '';
+  return { events, banner };
+}
+
+function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browser'): TrackingResult | null {
+  const $ = cheerio.load(html);
+  if (matchesNotFound(module, $.text())) {
+    throw new NotFoundError(`${module.name}: status not available yet`);
+  }
+  const { events, banner } = extractFromHtml(module, $);
   if (events.length === 0 && !banner) return null;
   return summarize(module, module.code, events, source, banner || undefined);
+}
+
+// ── Diagnostics (for the admin "Test" button) ──────────────────────────────────
+const BLOCK_MARKERS =
+  /access denied|are you a human|recaptcha|captcha|verify you are|unusual traffic|enable javascript|request (was )?blocked|bot detection|pardon our interruption/i;
+
+function pageTitle(html: string): string {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return m ? clean(m[1]) : '';
+}
+
+function textSample($: cheerio.CheerioAPI): string {
+  return clean($('body').text() || $.text()).slice(0, 400);
+}
+
+export interface ScrapeDebug {
+  ok: boolean;
+  source: 'http' | 'browser' | 'json' | 'none';
+  httpStatus?: number;
+  finalUrl?: string;
+  htmlLength?: number;
+  title?: string;
+  blocked?: boolean;
+  sample?: string;
+  status?: TrackStatus;
+  events: TrackingEvent[];
+  notes: string[];
+}
+
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Run a module against a tracking number and report what actually happened. */
+export async function inspectModule(module: CarrierModule, tn: string): Promise<ScrapeDebug> {
+  const notes: string[] = [];
+  if (module.kind === 'json') {
+    try {
+      const r = await trackJson(module, tn);
+      return { ok: true, source: 'json', events: r.events, status: r.status, notes };
+    } catch (e) {
+      notes.push(msg(e));
+      return { ok: false, source: 'json', events: [], notes };
+    }
+  }
+
+  const spec = module.scraper!;
+  const url = fillTemplate(module.request.url, tn);
+
+  if (spec.fastJson) {
+    try {
+      const r = await tryFastJson(module, spec.fastJson, tn);
+      if (r && r.events.length) {
+        return { ok: true, source: 'json', events: r.events, status: r.status, notes };
+      }
+      notes.push('fastJson returned no events');
+    } catch (e) {
+      notes.push(`fastJson: ${msg(e)}`);
+    }
+  }
+
+  // HTTP-first attempt
+  let last: Partial<ScrapeDebug> = {};
+  try {
+    const res = await safeRequest(url, {
+      method: module.request.method,
+      headers: module.request.headers,
+      maxRedirects: module.request.maxRedirections,
+      timeoutMs: module.request.timeoutMs,
+      maxBytes: module.request.maxBytes,
+    });
+    const $ = cheerio.load(res.body);
+    const { events, banner } = extractFromHtml(module, $);
+    last = {
+      source: 'http',
+      httpStatus: res.statusCode,
+      finalUrl: res.finalUrl,
+      htmlLength: res.body.length,
+      title: pageTitle(res.body),
+      blocked: BLOCK_MARKERS.test(res.body),
+      sample: textSample($),
+    };
+    if (res.statusCode === 200 && (events.length || banner)) {
+      const status = banner ? statusFromText(module, banner) : events[0]?.status ?? 'unknown';
+      return { ...last, ok: true, source: 'http', events, status, notes };
+    }
+    notes.push(`HTTP ${res.statusCode}, ${events.length} matched rows`);
+  } catch (e) {
+    notes.push(`HTTP: ${msg(e)}`);
+  }
+
+  // Browser fallback
+  if (spec.browser?.enabled && config.scraper.browserFallback) {
+    try {
+      const html = await renderWithSession(module, url);
+      const $ = cheerio.load(html);
+      const { events, banner } = extractFromHtml(module, $);
+      last = {
+        source: 'browser',
+        htmlLength: html.length,
+        title: pageTitle(html),
+        blocked: BLOCK_MARKERS.test(html),
+        sample: textSample($),
+      };
+      if (events.length || banner) {
+        const status = banner ? statusFromText(module, banner) : events[0]?.status ?? 'unknown';
+        return { ...last, ok: true, source: 'browser', events, status, notes };
+      }
+      notes.push(`browser render: ${events.length} matched rows`);
+    } catch (e) {
+      notes.push(`browser: ${msg(e)}`);
+    }
+  } else {
+    notes.push('browser fallback disabled');
+  }
+
+  return { ...last, ok: false, source: last.source ?? 'none', events: [], notes };
 }
 
 async function tryFastJson(
@@ -201,12 +342,7 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
       `${module.name}: no data over HTTP and browser fallback unavailable`,
     );
   }
-  const html = await fetchRenderedHtml(url, {
-    waitFor: spec.browser.waitFor,
-    guard: async (target) => {
-      await assertPublicUrl(target);
-    },
-  });
+  const html = await renderWithSession(module, url);
   const parsed = parseHtml(module, html, 'browser');
   if (!parsed) throw new NotFoundError(`${module.name}: could not parse tracking page`);
   return parsed;

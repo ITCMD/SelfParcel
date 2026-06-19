@@ -862,17 +862,30 @@ $('#module-test-btn').addEventListener('click', async () => {
     out.innerHTML = `<p class="error-line">${escapeHtml(err.message)}</p>`;
     return;
   }
-  const r = await api(`/api/admin/modules/${editingCode}/test`, { method: 'POST', body: JSON.stringify({ trackingNumber: tn }) });
-  if (!r.ok) {
-    out.innerHTML = `<p class="error-line">${escapeHtml(r.error)}</p>`;
+  const { debug } = await api(`/api/admin/modules/${editingCode}/test`, { method: 'POST', body: JSON.stringify({ trackingNumber: tn }) });
+  const ev = debug.events || [];
+
+  if (debug.ok) {
+    out.innerHTML = `<div class="log-head">Parsed ${ev.length} event(s) via ${debug.source} · status: ${debug.status}</div>
+      <ul class="timeline">${ev
+        .slice(0, 8)
+        .map((e) => `<li><div class="t-desc">${escapeHtml(e.description)}</div><div class="t-when">${fmtDate(e.timestamp)}</div>${e.location ? `<div class="t-loc">${escapeHtml(e.location)}</div>` : ''}</li>`)
+        .join('')}</ul>`;
     return;
   }
-  const ev = r.result.events || [];
-  out.innerHTML = `<div class="log-head">Parsed ${ev.length} event(s) · status: ${r.result.status}</div>
-    <ul class="timeline">${ev
-      .slice(0, 8)
-      .map((e) => `<li><div class="t-desc">${escapeHtml(e.description)}</div><div class="t-when">${fmtDate(e.timestamp)}</div>${e.location ? `<div class="t-loc">${escapeHtml(e.location)}</div>` : ''}</li>`)
-      .join('')}</ul>`;
+
+  // Failed: show what was actually fetched so the cause is obvious.
+  const bits = [];
+  if (debug.blocked) bits.push('<span class="a-tag off">looks blocked</span>');
+  if (debug.httpStatus) bits.push(`HTTP ${debug.httpStatus}`);
+  bits.push(`source: ${debug.source}`);
+  if (debug.htmlLength != null) bits.push(`${debug.htmlLength} bytes`);
+  out.innerHTML = `
+    <div class="log-head">No events parsed</div>
+    <p class="hint">${bits.join(' · ')}</p>
+    ${debug.title ? `<p class="hint">Page title: <strong>${escapeHtml(debug.title)}</strong></p>` : ''}
+    ${debug.notes?.length ? `<p class="hint">${debug.notes.map(escapeHtml).join('<br>')}</p>` : ''}
+    ${debug.sample ? `<div class="code-area" style="min-height:80px;white-space:pre-wrap">${escapeHtml(debug.sample)}</div>` : ''}`;
 });
 
 $('#module-reset-btn').addEventListener('click', async () => {

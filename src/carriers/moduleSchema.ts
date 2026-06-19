@@ -42,7 +42,7 @@ export interface FastJsonSpec {
 }
 
 export interface ScraperSpec {
-  browser?: { enabled?: boolean; waitFor?: string };
+  browser?: { enabled?: boolean; waitFor?: string; warmupUrl?: string };
   rowSelector: string;
   fields: FieldMap;
   banner?: string;
@@ -195,6 +195,9 @@ export function validateModule(
       checkFields(m.scraper.fields, errors, 'scraper.fields');
       if (m.scraper.banner !== undefined && typeof m.scraper.banner !== 'string') {
         errors.push('scraper.banner must be a string');
+      }
+      if (m.scraper.browser?.warmupUrl !== undefined) {
+        checkUrlTemplate(m.scraper.browser.warmupUrl, errors, 'scraper.browser.warmupUrl');
       }
       if (m.scraper.fastJson !== undefined) {
         const fj = m.scraper.fastJson;

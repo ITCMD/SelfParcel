@@ -24,8 +24,12 @@ services:
       DATABASE_PATH: /data/selfparcel.sqlite
       POLL_INTERVAL_MINUTES: "30"
       MIN_REFRESH_MINUTES: "10"
-      # All carriers scrape their public tracking page; no API keys needed.
+      # All carriers scrape their public tracking page (stealth-hardened).
       SCRAPER_BROWSER_FALLBACK: "true"
+      # For tough bot protection, point at a real external Chrome over CDP:
+      BROWSER_CDP_URL: "${BROWSER_CDP_URL:-}"
+      BROWSER_EXECUTABLE_PATH: "${BROWSER_EXECUTABLE_PATH:-}"
+      BROWSER_HEADFUL: "${BROWSER_HEADFUL:-false}"
       # Authentication: none | local | oidc (default none = unprotected).
       AUTH_MODE: "${AUTH_MODE:-none}"
       AUTH_ENABLED: "${AUTH_ENABLED:-false}"

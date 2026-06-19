@@ -46,6 +46,23 @@ async function main(): Promise<void> {
     trustProxy: true,
   });
 
+  // Tolerate empty JSON bodies. Several endpoints (refresh, test, reset, leave)
+  // are bodyless POSTs, but the browser still sends Content-Type: application/json;
+  // the default parser would 400 on the empty body.
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (_req, body: string, done) => {
+      if (!body) return done(null, undefined);
+      try {
+        done(null, JSON.parse(body));
+      } catch (err) {
+        (err as Error & { statusCode?: number }).statusCode = 400;
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // Signs the session/flow cookies. The plugin still wants a secret when auth
   // is disabled, so fall back to an ephemeral one.
   await app.register(fastifyCookie, {

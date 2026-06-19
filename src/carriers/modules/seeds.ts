@@ -23,28 +23,27 @@ const usps: CarrierModule = {
     { pattern: '^[A-Z]{2}\\d{9}US$' },
   ],
   request: {
-    url: 'https://tools.usps.com/go/TrackConfirmAction?tLabels={tn}',
+    url: 'https://tools.usps.com/go/TrackConfirmAction.action?tLabels={tn}',
     method: 'GET',
-    headers: {
-      Accept: 'text/html,application/xhtml+xml',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
+    headers: { 'Accept-Language': 'en-US,en;q=0.9' },
     maxRedirections: 3,
+    timeoutMs: 45000,
   },
   notFound: ['could not locate the tracking information', 'status not available'],
   scraper: {
     browser: {
       enabled: true,
-      waitFor:
-        '.tracking-progress-bar-status-container, .track-bar-container, .banner-content',
+      // Visit the public site first so Akamai sets its clearance cookie.
+      warmupUrl: 'https://www.usps.com/tracking/',
+      waitFor: '.tb-step, .tracking-progress-bar-status-container, .banner-content',
     },
-    rowSelector: '.tracking-progress-bar-status-container, .track-history-item, .tb-step',
+    rowSelector: '.tb-step, .tracking-progress-bar-status-container, .track-history-item',
     fields: {
-      description: '.tb-status-detail, .tracking-status, p.tb-status, p',
-      date: '.tb-date, .tracking-date, p.tb-date',
+      description: '.tb-status-detail, .tb-status, .tracking-status, p.tb-status',
+      date: '.tb-date, .tracking-date',
       location: '.tb-location, .tracking-location',
     },
-    banner: '.banner-content .tb-status, .delivery_status, .current-step .tb-status-detail',
+    banner: '.banner-content, .current-step .tb-status-detail, .delivery_status',
   },
 };
 
@@ -153,6 +152,6 @@ const fedex: CarrierModule = {
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '1', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '1', module: fedex },
-  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '1', module: usps },
+  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '2', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
 ];

@@ -17,14 +17,17 @@ instead: each user adds their own keys under **Settings → Carrier API keys**.
 A package then uses its owner's keys when present, and falls back to the scraper
 otherwise. USPS and SpeedPAK are scrape-only.
 
-Scrapers are HTTP-first: a plain request first, and only spin up headless
-Chromium (Playwright) if the page needs JavaScript to render.
+Scrapers are HTTP-first: a plain request first, then a **stealth-hardened**
+headless Chromium (Playwright + stealth, realistic fingerprint, a landing-page
+warmup, and persisted session cookies) for JS-rendered or bot-protected pages.
+USPS and UPS sit behind Akamai; the stealth browser gets past it in testing.
 
-> Public HTML changes over time, and the big carriers (UPS/FedEx especially) use
-> bot protection that can block a headless browser — the API is the more reliable
-> path when you have keys. The built-in scraper selectors are a best-effort
-> starting point; an admin can fix any carrier's selectors and test them from the
-> **Providers** panel without redeploying (see [Provider modules](#provider-modules)).
+> If a carrier still gets blocked from your server's IP, point at a real external
+> Chrome over CDP with `BROWSER_CDP_URL` (e.g. a browserless container) — that's
+> the most reliable option. An admin can also fix any carrier's selectors and
+> **test a real tracking number** from the **Providers** panel — the test shows
+> the HTTP status, page title, and a snippet so a bot-block is easy to spot
+> (see [Provider modules](#provider-modules)).
 
 ### Getting UPS / FedEx API keys
 
@@ -280,6 +283,8 @@ All via environment variables; see [`.env.example`](.env.example).
 | `POLL_INTERVAL_MINUTES` | `30` | how often active packages refresh |
 | `MIN_REFRESH_MINUTES` | `10` | min age before a package is re-fetched |
 | `SCRAPER_BROWSER_FALLBACK` | `true` | allow the headless-browser fallback |
+| `BROWSER_CDP_URL` | — | connect scraping to an external Chrome over CDP |
+| `BROWSER_EXECUTABLE_PATH` / `BROWSER_HEADFUL` | — | use a real Chrome binary / run headful |
 | `AUTH_MODE` | `none` | `none`, `local`, or `oidc` |
 | `SESSION_SECRET` | | signs session cookies; required for local/oidc |
 | `OIDC_*` | | OIDC provider config |

@@ -47,6 +47,14 @@ export const config = {
 
   scraper: {
     browserFallback: bool('SCRAPER_BROWSER_FALLBACK', true),
+    // Connect to an external real Chrome over CDP instead of launching the
+    // bundled headless-shell. Best chance against bot protection (Akamai).
+    // e.g. ws://chrome:9222/... or http://chrome:9222
+    cdpUrl: str('BROWSER_CDP_URL'),
+    // Or launch a real Chrome binary instead of the bundled chromium.
+    executablePath: str('BROWSER_EXECUTABLE_PATH'),
+    // Run headful (needs a display / xvfb); harder to fingerprint than headless.
+    headful: bool('BROWSER_HEADFUL', false),
   },
 
   notify: {

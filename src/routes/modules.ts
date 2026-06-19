@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../auth/routes.js';
 import { validateModule } from '../carriers/moduleSchema.js';
-import { buildProviderFromModule } from '../carriers/engine.js';
+import { inspectModule } from '../carriers/engine.js';
 import { reloadModules } from '../carriers/registry.js';
-import { NotFoundError } from '../carriers/types.js';
 import {
   countPackagesForCarrier,
   deleteModule,
@@ -199,6 +198,8 @@ export async function registerModuleRoutes(app: FastifyInstance): Promise<void> 
   );
 
   // Test a module against a real tracking number (works even while disabled).
+  // Returns diagnostics (HTTP status, page title, snippet) so selector problems
+  // and bot blocks can be told apart.
   app.post<{ Params: { code: string }; Body: { trackingNumber?: string } }>(
     '/api/admin/modules/:code/test',
     { preHandler: requireAdmin },
@@ -207,18 +208,8 @@ export async function registerModuleRoutes(app: FastifyInstance): Promise<void> 
       if (!m) return reply.code(404).send({ error: 'Module not found' });
       const tn = (req.body?.trackingNumber ?? '').trim();
       if (!tn) return reply.code(400).send({ error: 'trackingNumber is required' });
-      try {
-        const provider = buildProviderFromModule(m.module);
-        const result = await provider.track(tn);
-        return { ok: true, result };
-      } catch (err) {
-        const notFound = err instanceof NotFoundError;
-        return reply.code(notFound ? 200 : 200).send({
-          ok: false,
-          notFound,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      const debug = await inspectModule(m.module, tn);
+      return { debug };
     },
   );
 }
