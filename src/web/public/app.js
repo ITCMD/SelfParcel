@@ -98,25 +98,34 @@ async function loadPackages() {
       const eyebrowTn = p.label
         ? `<span class="pkg-sep">·</span><span class="pkg-tn">${escapeHtml(p.tracking_number)}</span>`
         : '';
+      const sharedTag = !p.isOwner
+        ? `<span class="pkg-sep">·</span><span class="pkg-shared">shared by ${escapeHtml(p.sharedBy)}</span>`
+        : p.sharedCount
+          ? `<span class="pkg-sep">·</span><span class="pkg-shared">shared with ${p.sharedCount}</span>`
+          : '';
+
+      const actions = p.isOwner
+        ? `<button class="btn small ${p.notify ? '' : 'muted-on'}" data-act="mute" data-id="${p.id}"
+              title="${p.notify ? 'Notifications on, click to mute' : 'Muted, click to enable'}">${p.notify ? '🔔' : '🔕'}</button>
+            <button class="btn small" data-act="refresh" data-id="${p.id}" title="Refresh now">↻</button>
+            ${p.canShare ? `<button class="btn small" data-act="share" data-id="${p.id}" title="Share">👥</button>` : ''}
+            <button class="btn small" data-act="archive" data-id="${p.id}">${p.archived ? 'Unarchive' : 'Archive'}</button>
+            <button class="btn small danger" data-act="delete" data-id="${p.id}" title="Delete">✕</button>`
+        : `<button class="btn small" data-act="refresh" data-id="${p.id}" title="Refresh now">↻</button>
+            <button class="btn small danger" data-act="leave" data-id="${p.id}" title="Remove from my list">✕</button>`;
 
       return `
-        <article class="package carrier-${p.carrier}" data-id="${p.id}" style="animation-delay:${Math.min(i * 35, 280)}ms">
+        <article class="package carrier-${p.carrier}" data-id="${p.id}" data-owner="${p.isOwner ? 1 : 0}" data-can-share="${p.canShare ? 1 : 0}" data-label="${escapeHtml(p.label || p.tracking_number)}" style="animation-delay:${Math.min(i * 35, 280)}ms">
           <div class="pkg-main">
             <div class="pkg-eyebrow">
               <span class="pkg-carrier">${escapeHtml(p.carrierName)}</span>
-              ${eyebrowTn}
+              ${eyebrowTn}${sharedTag}
             </div>
             ${title}
             <div class="pkg-meta">${meta}</div>
           </div>
           <span class="stamp ${status}"><span class="sdot"></span>${STATUS_LABEL[status] || status}</span>
-          <div class="pkg-actions">
-            <button class="btn small ${p.notify ? '' : 'muted-on'}" data-act="mute" data-id="${p.id}"
-              title="${p.notify ? 'Notifications on, click to mute' : 'Muted, click to enable'}">${p.notify ? '🔔' : '🔕'}</button>
-            <button class="btn small" data-act="refresh" data-id="${p.id}" title="Refresh now">↻</button>
-            <button class="btn small" data-act="archive" data-id="${p.id}">${p.archived ? 'Unarchive' : 'Archive'}</button>
-            <button class="btn small danger" data-act="delete" data-id="${p.id}" title="Delete">✕</button>
-          </div>
+          <div class="pkg-actions">${actions}</div>
         </article>`;
     })
     .join('');
@@ -198,11 +207,15 @@ $('#package-list').addEventListener('click', async (e) => {
     e.stopPropagation();
     const id = btn.dataset.id;
     const act = btn.dataset.act;
+    if (act === 'share') {
+      const card = btn.closest('.package');
+      openShare(id, card.dataset.label);
+      return;
+    }
     btn.disabled = true;
     try {
       if (act === 'refresh') await api(`/api/packages/${id}/refresh`, { method: 'POST' });
       if (act === 'mute') {
-        const card = btn.closest('.package');
         const currentlyOn = btn.textContent.includes('🔔');
         await api(`/api/packages/${id}/notify`, {
           method: 'POST',
@@ -210,6 +223,10 @@ $('#package-list').addEventListener('click', async (e) => {
         });
       }
       if (act === 'archive') await api(`/api/packages/${id}/archive`, { method: 'POST', body: JSON.stringify({ archived: true }) });
+      if (act === 'leave') {
+        if (!confirm('Remove this shared package from your list?')) { btn.disabled = false; return; }
+        await api(`/api/packages/${id}/leave`, { method: 'POST' });
+      }
       if (act === 'delete') {
         if (!confirm('Delete this package and its history?')) { btn.disabled = false; return; }
         await api(`/api/packages/${id}`, { method: 'DELETE' });
@@ -222,6 +239,92 @@ $('#package-list').addEventListener('click', async (e) => {
   }
   const card = e.target.closest('.package');
   if (card) openDetail(card.dataset.id);
+});
+
+// Right-click a package you own to share it.
+$('#package-list').addEventListener('contextmenu', (e) => {
+  const card = e.target.closest('.package');
+  if (!card || card.dataset.canShare !== '1') return;
+  e.preventDefault();
+  openShare(card.dataset.id, card.dataset.label);
+});
+
+// ── Sharing ───────────────────────────────────────────────────────────────────
+const shareState = { id: null, shared: new Set() };
+
+async function openShare(id, label) {
+  shareState.id = id;
+  $('#share-sub').textContent = label || '';
+  $('#share-search').value = '';
+  $('#share-msg').textContent = '';
+  $('#share-modal').classList.remove('hidden');
+  await refreshShareChips();
+  await loadSuggestions('');
+}
+
+async function refreshShareChips() {
+  const { shares } = await api(`/api/packages/${shareState.id}/shares`);
+  shareState.shared = new Set(shares.map((s) => s.userId));
+  $('#share-current').innerHTML = shares
+    .map(
+      (s) =>
+        `<span class="share-chip">${escapeHtml(s.username || s.userId)}<button data-unshare="${s.userId}" title="Remove">×</button></span>`,
+    )
+    .join('');
+}
+
+async function loadSuggestions(q) {
+  const { users } = await api(`/api/share/candidates?q=${encodeURIComponent(q)}`);
+  const rows = users.filter((u) => !shareState.shared.has(u.id));
+  $('#share-suggest').innerHTML = rows.length
+    ? rows
+        .map(
+          (u) =>
+            `<div class="suggest-row" data-share="${u.id}"><span>${escapeHtml(u.username || u.id)}</span>${u.lastShared ? '<span class="recent">recent</span>' : ''}</div>`,
+        )
+        .join('')
+    : '<p class="hint">No matching users.</p>';
+}
+
+let shareSearchTimer;
+$('#share-search').addEventListener('input', (e) => {
+  clearTimeout(shareSearchTimer);
+  const q = e.target.value.trim();
+  shareSearchTimer = setTimeout(() => loadSuggestions(q), 200);
+});
+
+$('#share-suggest').addEventListener('click', async (e) => {
+  const row = e.target.closest('[data-share]');
+  if (!row) return;
+  try {
+    await api(`/api/packages/${shareState.id}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ userId: row.dataset.share }),
+    });
+    await refreshShareChips();
+    await loadSuggestions($('#share-search').value.trim());
+    loadPackages();
+  } catch (err) {
+    $('#share-msg').textContent = err.message;
+  }
+});
+
+$('#share-current').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-unshare]');
+  if (!btn) return;
+  try {
+    await api(`/api/packages/${shareState.id}/shares/${btn.dataset.unshare}`, { method: 'DELETE' });
+    await refreshShareChips();
+    await loadSuggestions($('#share-search').value.trim());
+    loadPackages();
+  } catch (err) {
+    $('#share-msg').textContent = err.message;
+  }
+});
+
+$('#share-close').addEventListener('click', () => $('#share-modal').classList.add('hidden'));
+$('#share-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'share-modal') $('#share-modal').classList.add('hidden');
 });
 
 $('#refresh-all').addEventListener('click', async () => {

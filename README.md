@@ -215,6 +215,16 @@ Register `https://your-host/auth/callback` as the redirect URI, or set
 sign in. Users are created on first login, so there's no manual user creation in
 this mode, but admins can still promote/disable/delete from the Users panel.
 
+## Sharing
+
+When auth is on, packages are private to whoever added them, but you can share
+one with other users. Click the **share button** on a package (or right-click
+the card) to open the share dialog. Pick a user from the list, which suggests
+people you've shared with recently at the top. Recipients see the package in
+their own list, can open it and refresh it (it still uses the owner's carrier
+keys), and can remove it from their list. Only the owner can edit, delete, or
+manage who it's shared with.
+
 ## Provider modules
 
 Carriers are data-driven. UPS and FedEx are native code (OAuth); USPS and
@@ -326,6 +336,9 @@ an API or a scraped page.
 | POST | `/api/packages/:id/archive` | archive `{archived}` |
 | POST | `/api/packages/:id/notify` | mute/unmute `{notify}` |
 | DELETE | `/api/packages/:id` | delete package + history |
+| GET/POST/DELETE | `/api/packages/:id/shares[/:userId]` | manage who a package is shared with (owner) |
+| POST | `/api/packages/:id/leave` | recipient removes a shared package |
+| GET | `/api/share/candidates?q=` | users to share with, recent first |
 | GET | `/auth/me` | session `{mode, authenticated, user, isAdmin}` |
 | GET/PUT/DELETE | `/api/me/credentials[/:carrier]` | your own UPS/FedEx keys |
 | POST | `/auth/local-login`, `/auth/register` | local auth |

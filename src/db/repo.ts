@@ -42,6 +42,19 @@ export function listPackages(includeArchived = false, ownerId?: string): Package
     .all(...params) as PackageRow[];
 }
 
+// Packages a user owns plus those shared with them.
+export function listAccessiblePackages(userId: string, includeArchived = false): PackageRow[] {
+  const archived = includeArchived ? '' : 'AND p.archived = 0';
+  return db
+    .prepare(
+      `SELECT DISTINCT p.* FROM packages p
+       LEFT JOIN package_shares s ON s.package_id = p.id AND s.user_id = @uid
+       WHERE (p.owner_user_id = @uid OR s.user_id = @uid) ${archived}
+       ORDER BY p.created_at DESC`,
+    )
+    .all({ uid: userId }) as PackageRow[];
+}
+
 export function getPackage(id: number): PackageRow | undefined {
   return db.prepare('SELECT * FROM packages WHERE id = ?').get(id) as
     | PackageRow

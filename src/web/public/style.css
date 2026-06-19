@@ -778,6 +778,74 @@ select:focus {
   margin-top: 12px;
 }
 
+/* ── Sharing ────────────────────────────────────────────────────────────── */
+.pkg-shared {
+  color: var(--accent);
+  font-style: italic;
+}
+.share-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+.share-chips:empty::after {
+  content: "Not shared with anyone yet.";
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+.share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  font-size: 13px;
+}
+.share-chip button {
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.share-chip button:hover {
+  color: var(--st-exception);
+}
+.share-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.suggest-row:hover {
+  border-color: var(--accent);
+}
+.suggest-row .recent {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
 /* motion */
 @keyframes rise {
   from {

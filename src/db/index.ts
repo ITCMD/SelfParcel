@@ -92,6 +92,15 @@ export function migrate(): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
       ON users(username) WHERE username IS NOT NULL;
 
+    -- Packages shared from their owner to other users (read + refresh).
+    CREATE TABLE IF NOT EXISTS package_shares (
+      package_id INTEGER NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
+      user_id    TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (package_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_shares_user ON package_shares(user_id);
+
     -- Per-user carrier API credentials. Falls back to .env when absent.
     CREATE TABLE IF NOT EXISTS user_carrier_credentials (
       user_id       TEXT NOT NULL,
