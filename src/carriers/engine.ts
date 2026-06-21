@@ -185,10 +185,29 @@ function extractFromHtml(
     });
   });
   const banner = spec.banner ? clean($(spec.banner).first().text()) : '';
-  const estimatedDelivery = spec.estimatedDelivery
-    ? parseEstimatedDelivery($(spec.estimatedDelivery).first().text())
-    : null;
+  const estimatedDelivery = extractEstimatedDelivery(module, $);
   return { events, banner, estimatedDelivery };
+}
+
+// Estimated delivery, resilient to layout changes: try the module's selector
+// first, then fall back to anchoring on an "expected/estimated delivery" phrase
+// anywhere in the page and parsing the date that follows it. Only runs for
+// modules that opt into ETA (they set scraper.estimatedDelivery).
+function extractEstimatedDelivery(module: CarrierModule, $: cheerio.CheerioAPI): string | null {
+  const sel = module.scraper?.estimatedDelivery;
+  if (!sel) return null;
+
+  const fromSelector = parseEstimatedDelivery($(sel).first().text());
+  if (fromSelector) return fromSelector;
+
+  const text = clean($('body').text() || $.text());
+  const re = /(?:expected|estimated)\s+delivery(?:\s+(?:by|date|on))?/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const eta = parseEstimatedDelivery(text.slice(m.index, m.index + 80));
+    if (eta) return eta;
+  }
+  return null;
 }
 
 function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browser'): TrackingResult | null {
@@ -224,8 +243,25 @@ export interface ScrapeDebug {
   blocked?: boolean;
   sample?: string;
   status?: TrackStatus;
+  /** Parsed estimated delivery (YYYY-MM-DD), if the module found one. */
+  estimatedDelivery?: string | null;
+  /** Whether the estimatedDelivery selector matched any element at all. */
+  etaSelectorMatched?: boolean;
   events: TrackingEvent[];
   notes: string[];
+}
+
+// Pull ETA diagnostics out of a loaded page, for the Test button.
+function etaDebug(module: CarrierModule, $: cheerio.CheerioAPI): {
+  estimatedDelivery: string | null;
+  etaSelectorMatched: boolean;
+} {
+  const sel = module.scraper?.estimatedDelivery;
+  if (!sel) return { estimatedDelivery: null, etaSelectorMatched: false };
+  return {
+    estimatedDelivery: extractEstimatedDelivery(module, $),
+    etaSelectorMatched: $(sel).first().length > 0,
+  };
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -278,6 +314,7 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
       title: pageTitle(res.body),
       blocked: BLOCK_MARKERS.test(res.body),
       sample: textSample($),
+      ...etaDebug(module, $),
     };
     if (res.statusCode === 200 && (events.length || banner)) {
       const status = banner ? statusFromText(module, banner) : events[0]?.status ?? 'unknown';
@@ -300,6 +337,7 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
         title: pageTitle(html),
         blocked: BLOCK_MARKERS.test(html),
         sample: textSample($),
+        ...etaDebug(module, $),
       };
       if (events.length || banner) {
         const status = banner ? statusFromText(module, banner) : events[0]?.status ?? 'unknown';

@@ -1084,7 +1084,14 @@ $('#module-test-btn').addEventListener('click', async () => {
   const ev = debug.events || [];
 
   if (debug.ok) {
+    const eta =
+      debug.estimatedDelivery
+        ? `ETA: <strong>${escapeHtml(debug.estimatedDelivery)}</strong>`
+        : debug.etaSelectorMatched
+          ? 'ETA: selector matched but no date parsed'
+          : 'ETA: selector matched nothing on the page';
     out.innerHTML = `<div class="log-head">Parsed ${ev.length} event(s) via ${debug.source} · status: ${debug.status}</div>
+      <p class="hint">${eta}</p>
       <ul class="timeline">${ev
         .slice(0, 8)
         .map((e) => `<li><div class="t-desc">${escapeHtml(e.description)}</div><div class="t-when">${fmtDate(e.timestamp)}</div>${e.location ? `<div class="t-loc">${escapeHtml(e.location)}</div>` : ''}</li>`)

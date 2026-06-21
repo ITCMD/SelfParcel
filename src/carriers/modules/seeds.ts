@@ -179,6 +179,6 @@ const fedex: CarrierModule = {
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '2', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
-  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '5', module: usps },
+  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '6', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
 ];
