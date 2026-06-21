@@ -647,6 +647,93 @@ select:focus {
   font-size: 13px;
   margin-top: 10px;
 }
+.hint.ok-line {
+  color: var(--st-delivered);
+}
+.hint.err-line {
+  color: var(--st-exception);
+}
+
+/* notifications: channel list + add form */
+.channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.channel-row.off {
+  opacity: 0.55;
+}
+.channel-row .ch-enable {
+  margin: 0;
+}
+.ch-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.ch-name {
+  font-weight: 700;
+}
+.ch-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.ch-sum {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.add-channel {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.add-channel select {
+  flex: 1;
+}
+.channel-form {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+}
+.channel-form.hidden {
+  display: none;
+}
+.cf-head {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.cf-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 3px;
+}
+.channel-form textarea {
+  min-height: 60px;
+  resize: vertical;
+}
 
 /* settings: channels */
 .channel-list {

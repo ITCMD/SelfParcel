@@ -46,6 +46,38 @@ function parseLooseDate(value: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+const MONTH_NUM: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+// Pull a delivery date out of free-text like "Expected Delivery by Friday,
+// June 27, 2025 by 9:00pm". Returns a date-only YYYY-MM-DD string (the carrier
+// quotes a day, not a precise time), or null when no full date is present.
+// Built by hand rather than `new Date()` so it never shifts across timezones.
+function parseEstimatedDelivery(raw: string): string | null {
+  const text = clean(raw);
+  if (!text) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  // "June 27, 2025" / "Sept 3 2025" / "Jun 25th, 2025"
+  let m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(text);
+  if (m) return `${m[3]}-${pad(MONTH_NUM[m[1].toLowerCase()])}-${pad(Number(m[2]))}`;
+
+  // "06/24/2025" or "12/9/25"
+  m = /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/.exec(text);
+  if (m) {
+    const year = Number(m[3]) < 100 ? Number(m[3]) + 2000 : Number(m[3]);
+    return `${year}-${pad(Number(m[1]))}-${pad(Number(m[2]))}`;
+  }
+
+  // "2025-06-24"
+  m = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(text);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+
+  return null;
+}
+
 function fillTemplate(url: string, tn: string): string {
   return url.replace(/\{tn\}/g, encodeURIComponent(tn));
 }
@@ -130,7 +162,7 @@ function summarize(
 function extractFromHtml(
   module: CarrierModule,
   $: cheerio.CheerioAPI,
-): { events: TrackingEvent[]; banner: string } {
+): { events: TrackingEvent[]; banner: string; estimatedDelivery: string | null } {
   const spec = module.scraper!;
   const events: TrackingEvent[] = [];
   $(spec.rowSelector).each((_i, el) => {
@@ -149,7 +181,10 @@ function extractFromHtml(
     });
   });
   const banner = spec.banner ? clean($(spec.banner).first().text()) : '';
-  return { events, banner };
+  const estimatedDelivery = spec.estimatedDelivery
+    ? parseEstimatedDelivery($(spec.estimatedDelivery).first().text())
+    : null;
+  return { events, banner, estimatedDelivery };
 }
 
 function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browser'): TrackingResult | null {
@@ -157,9 +192,9 @@ function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browse
   if (matchesNotFound(module, $.text())) {
     throw new NotFoundError(`${module.name}: status not available yet`);
   }
-  const { events, banner } = extractFromHtml(module, $);
+  const { events, banner, estimatedDelivery } = extractFromHtml(module, $);
   if (events.length === 0 && !banner) return null;
-  return summarize(module, module.code, events, source, banner || undefined);
+  return summarize(module, module.code, events, source, banner || undefined, estimatedDelivery);
 }
 
 // ── Diagnostics (for the admin "Test" button) ──────────────────────────────────

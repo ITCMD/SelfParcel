@@ -1,18 +1,31 @@
 import { request } from 'undici';
-import type { NotificationChannel } from '../types.js';
+import { field, type NotificationChannel } from '../types.js';
 
 // Generic webhook. Sends plain JSON by default, or Discord/Slack-shaped bodies
 // so those work without a separate integration.
 
 export const webhookChannel: NotificationChannel = {
-  id: 'webhook',
+  type: 'webhook',
   name: 'Webhook',
-  isConfigured: (t) => Boolean(t.channels.webhookUrl),
+  fields: [
+    { key: 'url', label: 'Webhook URL', type: 'url', required: true, placeholder: 'https://…' },
+    {
+      key: 'format',
+      label: 'Payload format',
+      type: 'select',
+      options: [
+        { value: 'json', label: 'JSON' },
+        { value: 'discord', label: 'Discord' },
+        { value: 'slack', label: 'Slack' },
+      ],
+    },
+  ],
+  validate: (c) => (field(c, 'url') ? null : 'A webhook URL is required'),
 
-  async send(msg, t) {
+  async send(msg, c) {
     const text = msg.url ? `${msg.body}\n${msg.url}` : msg.body;
     let body: string;
-    switch (t.channels.webhookFormat) {
+    switch (field(c, 'format')) {
       case 'discord':
         body = JSON.stringify({ content: `**${msg.title}**\n${text}` });
         break;
@@ -29,7 +42,7 @@ export const webhookChannel: NotificationChannel = {
         });
     }
 
-    const res = await request(t.channels.webhookUrl, {
+    const res = await request(field(c, 'url'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,

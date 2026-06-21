@@ -49,6 +49,9 @@ async function getToken(creds: CarrierCredentials): Promise<string> {
 export const fedexApi: ApiProvider = {
   code: 'fedex',
   name: 'FedEx',
+  async verify(creds): Promise<void> {
+    await getToken(creds);
+  },
   async track(trackingNumber, creds): Promise<TrackingResult> {
     const base = BASE[creds.env ?? 'production'] ?? BASE.production;
     const accessToken = await getToken(creds);

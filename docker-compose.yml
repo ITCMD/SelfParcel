@@ -43,8 +43,10 @@ services:
       OIDC_ALLOWED_EMAILS: "${OIDC_ALLOWED_EMAILS:-}"
       OIDC_ALLOWED_DOMAINS: "${OIDC_ALLOWED_DOMAINS:-}"
       SESSION_TTL_HOURS: "${SESSION_TTL_HOURS:-168}"
-      # Notifications. Channel targets are set per-user in the app; only the
-      # shared infrastructure lives here (SMTP relay, Apprise API, VAPID keys).
+      # Notifications are configured per-user in the app (each user adds their own
+      # channels, including their own Apprise server). The only notification
+      # config here is the SMTP relay for email. Web Push VAPID keys are
+      # auto-generated on first launch; the env vars below are optional overrides.
       APP_BASE_URL: "${APP_BASE_URL:-}"
       NOTIFY_TRIGGER: "${NOTIFY_TRIGGER:-status_change}"
       SMTP_HOST: "${SMTP_HOST:-}"
@@ -53,7 +55,7 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASS: "${SMTP_PASS:-}"
       SMTP_FROM: "${SMTP_FROM:-}"
-      APPRISE_API_URL: "${APPRISE_API_URL:-}"
+      # Optional VAPID override (auto-generated + persisted if left blank):
       VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
       VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
       VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@example.com}"

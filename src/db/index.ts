@@ -101,8 +101,9 @@ export function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_shares_user ON package_shares(user_id);
 
-    -- Per-user notification channels + trigger. user_id '' is the implicit
-    -- single user when auth is off.
+    -- Per-user notification trigger preference (when to notify). The channel
+    -- targets used to live here too (one column set per type); they now live in
+    -- user_notify_channels as discrete instances. user_id '' = single user.
     CREATE TABLE IF NOT EXISTS user_notify_settings (
       user_id        TEXT PRIMARY KEY,
       trigger        TEXT,
@@ -118,6 +119,20 @@ export function migrate(): void {
       apprise_urls   TEXT,
       updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Per-user notification channels, one row per configured target. A user can
+    -- have several of any type, each with its own label and JSON config. Fully
+    -- self-contained (no server config needed except the SMTP relay for email).
+    CREATE TABLE IF NOT EXISTS user_notify_channels (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    TEXT    NOT NULL,
+      type       TEXT    NOT NULL,             -- ntfy | pushover | gotify | email | webhook | apprise
+      label      TEXT,
+      config     TEXT    NOT NULL,             -- JSON object of the type's fields
+      enabled    INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_notify_channels_user ON user_notify_channels(user_id);
 
     -- Per-user carrier API keys. With keys, that carrier uses its official API;
     -- without, it falls back to the scraper module. user_id '' = single user.

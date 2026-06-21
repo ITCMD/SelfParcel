@@ -69,6 +69,8 @@ export interface ApiProvider {
   code: CarrierCode;
   name: string;
   track(trackingNumber: string, creds: CarrierCredentials): Promise<TrackingResult>;
+  /** Authenticate only, to check a user's keys without a tracking number. */
+  verify(creds: CarrierCredentials): Promise<void>;
 }
 
 /** Thrown when a tracking number is well-formed but no data exists yet. */

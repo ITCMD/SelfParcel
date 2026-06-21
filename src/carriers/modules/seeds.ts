@@ -30,6 +30,28 @@ const usps: CarrierModule = {
     timeoutMs: 45000,
   },
   notFound: ['could not locate the tracking information', 'status not available'],
+  // USPS phrasing -> normalized status. Checked against the latest scan, in this
+  // order (first match wins), so "On the Way" reads as in-transit rather than
+  // unknown. The milestone progress bar always contains the literal word
+  // "Delivered" as a future step, so we deliberately do NOT use a status banner
+  // here: status comes from the newest scan event, which is accurate.
+  statusMap: {
+    delivered: ['delivered', 'item picked up'],
+    out_for_delivery: ['out for delivery', 'vehicle for delivery'],
+    exception: ['alert', 'delayed', 'no access', 'held', 'return to sender', 'undeliverable'],
+    pre_transit: ['shipping label created', 'pre-shipment', 'label created', 'awaiting item'],
+    in_transit: [
+      'on the way',
+      'in transit',
+      'arriving',
+      'departed',
+      'arrived',
+      'accepted',
+      'moving within',
+      'in possession',
+      'picked up',
+    ],
+  },
   scraper: {
     browser: {
       enabled: true,
@@ -43,7 +65,8 @@ const usps: CarrierModule = {
       date: '.tb-date, .tracking-date',
       location: '.tb-location, .tracking-location',
     },
-    banner: '.banner-content, .current-step .tb-status-detail, .delivery_status',
+    estimatedDelivery:
+      '.expected-delivery-date, .eddText, .expected_delivery_date, [class*="expected-delivery"]',
   },
 };
 
@@ -117,6 +140,8 @@ const ups: CarrierModule = {
       location: '[class*="location"], [class*="city"]',
     },
     banner: '[class*="ups-status"], [class*="package_status"], [class*="current-status"]',
+    estimatedDelivery:
+      '[class*="estimated-delivery"], [class*="scheduledDelivery"], [class*="delivery-date"]',
   },
 };
 
@@ -146,12 +171,14 @@ const fedex: CarrierModule = {
       location: '[class*="location"], [class*="city"]',
     },
     banner: '[class*="redesignStatus"], [class*="package-status"], [class*="current-status"]',
+    estimatedDelivery:
+      '[class*="estimated-delivery"], [class*="deliveryDate"], [class*="delivery-date"]',
   },
 };
 
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
-  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '1', module: ups },
-  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '1', module: fedex },
-  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '2', module: usps },
+  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '2', module: ups },
+  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
+  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '4', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
 ];

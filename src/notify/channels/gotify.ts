@@ -1,5 +1,5 @@
 import { request } from 'undici';
-import { urgencyFor, type NotificationChannel } from '../types.js';
+import { field, urgencyFor, type NotificationChannel } from '../types.js';
 
 // Gotify: POST JSON to /message?token=APP_TOKEN on your Gotify server.
 // Docs: https://gotify.net/docs/pushmsg
@@ -7,13 +7,18 @@ import { urgencyFor, type NotificationChannel } from '../types.js';
 const PRIORITY = { low: 2, normal: 5, high: 8 } as const;
 
 export const gotifyChannel: NotificationChannel = {
-  id: 'gotify',
+  type: 'gotify',
   name: 'Gotify',
-  isConfigured: (t) => Boolean(t.channels.gotifyUrl && t.channels.gotifyToken),
+  fields: [
+    { key: 'url', label: 'Server URL', type: 'url', required: true, placeholder: 'https://gotify.example.com' },
+    { key: 'token', label: 'App token', type: 'password', required: true },
+  ],
+  validate: (c) =>
+    field(c, 'url') && field(c, 'token') ? null : 'Server URL and app token are required',
 
-  async send(msg, t) {
-    const base = t.channels.gotifyUrl.replace(/\/+$/, '');
-    const url = `${base}/message?token=${encodeURIComponent(t.channels.gotifyToken)}`;
+  async send(msg, c) {
+    const base = field(c, 'url').replace(/\/+$/, '');
+    const url = `${base}/message?token=${encodeURIComponent(field(c, 'token'))}`;
     const res = await request(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

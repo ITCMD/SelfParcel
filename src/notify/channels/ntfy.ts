@@ -1,5 +1,5 @@
 import { request } from 'undici';
-import { urgencyFor, type NotificationChannel } from '../types.js';
+import { field, urgencyFor, type NotificationChannel } from '../types.js';
 
 // ntfy: POST the body to the topic URL, metadata goes in headers.
 // Docs: https://docs.ntfy.sh/publish/
@@ -7,26 +7,25 @@ import { urgencyFor, type NotificationChannel } from '../types.js';
 const PRIORITY = { low: '2', normal: '3', high: '5' } as const;
 
 export const ntfyChannel: NotificationChannel = {
-  id: 'ntfy',
+  type: 'ntfy',
   name: 'ntfy',
-  isConfigured: (t) => Boolean(t.channels.ntfyUrl),
+  fields: [
+    { key: 'url', label: 'Topic URL', type: 'url', required: true, placeholder: 'https://ntfy.sh/my-parcels' },
+    { key: 'token', label: 'Access token', type: 'password', placeholder: 'optional' },
+  ],
+  validate: (c) => (field(c, 'url') ? null : 'A topic URL is required'),
 
-  async send(msg, t) {
+  async send(msg, c) {
     const headers: Record<string, string> = {
       Title: encodeHeader(msg.title),
       Priority: PRIORITY[urgencyFor(msg.status)],
     };
     if (msg.tags?.length) headers.Tags = msg.tags.join(',');
     if (msg.url) headers.Click = msg.url;
-    if (t.channels.ntfyToken) {
-      headers.Authorization = `Bearer ${t.channels.ntfyToken}`;
-    }
+    const token = field(c, 'token');
+    if (token) headers.Authorization = `Bearer ${token}`;
 
-    const res = await request(t.channels.ntfyUrl, {
-      method: 'POST',
-      headers,
-      body: msg.body,
-    });
+    const res = await request(field(c, 'url'), { method: 'POST', headers, body: msg.body });
     if (res.statusCode >= 300) {
       const text = await res.body.text();
       throw new Error(`ntfy failed (${res.statusCode}): ${text}`);

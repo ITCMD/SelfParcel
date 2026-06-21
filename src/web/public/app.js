@@ -76,6 +76,18 @@ function fmtDate(iso) {
   });
 }
 
+// Estimated delivery is a day, not a precise time. A date-only value (YYYY-MM-DD)
+// renders as just the day; anything with a time (e.g. a FedEx window) keeps it.
+function fmtEta(iso) {
+  if (!iso) return '';
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (dateOnly) {
+    const d = new Date(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]);
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  return fmtDate(iso);
+}
+
 // Friendly relative time, e.g. "just now", "5m ago", "3h ago", "2d ago".
 function timeAgo(iso) {
   if (!iso) return 'never';
@@ -94,11 +106,11 @@ async function loadCarriers() {
   const carriers = await api('/api/carriers');
   $('#carrier-status').innerHTML = carriers
     .map((c) => {
-      // Scrapers work out of the box; API carriers need credentials first.
-      const ready = c.kind === 'scraper' || c.configured;
+      // A module is ready out of the box; an API carrier is "API" once the
+      // viewer has saved keys, otherwise it falls back to its scraper.
+      const ready = c.configured || c.apiActive;
       const cls = ready ? 'ok' : 'warn';
-      const note =
-        c.kind === 'api' ? (c.configured ? 'API' : 'API · keys needed') : 'scraper';
+      const note = c.apiActive ? 'API' : 'scraper';
       return `<span class="chip ${cls}"><span class="dot"></span>${c.name} · ${note}</span>`;
     })
     .join('');
@@ -116,7 +128,7 @@ async function loadPackages() {
       const checked = p.last_checked_at
         ? `Refreshed ${timeAgo(p.last_checked_at)}`
         : 'Not checked yet';
-      const est = p.est_delivery ? ` · ETA ${fmtDate(p.est_delivery)}` : '';
+      const est = p.est_delivery ? ` · ETA ${fmtEta(p.est_delivery)}` : '';
       // Always show the refresh time; append the error as a secondary note.
       const meta = p.last_error
         ? `${checked} · <span class="err">⚠ ${escapeHtml(p.last_error)}</span>`
@@ -175,7 +187,7 @@ async function openDetail(id) {
     <div class="modal-sub">${escapeHtml(p.carrierName)} · ${escapeHtml(p.tracking_number)}</div>
     <div class="modal-row">
       <span class="stamp ${p.status}"><span class="sdot"></span>${STATUS_LABEL[p.status] || p.status}</span>
-      ${p.est_delivery ? `<span class="modal-sub">ETA ${fmtDate(p.est_delivery)}</span>` : ''}
+      ${p.est_delivery ? `<span class="modal-sub">ETA ${fmtEta(p.est_delivery)}</span>` : ''}
     </div>
     <div class="modal-sub">${p.last_checked_at ? `Last refreshed ${timeAgo(p.last_checked_at)} (${fmtDate(p.last_checked_at)})` : 'Not refreshed yet'}</div>
     ${p.last_error ? `<div class="error-line">⚠ ${escapeHtml(p.last_error)}</div>` : ''}
@@ -383,55 +395,122 @@ $('#detail-modal').addEventListener('click', (e) => {
   if (e.target.id === 'detail-modal') $('#detail-modal').classList.add('hidden');
 });
 
-function setVal(sel, v) {
-  const el = $(sel);
-  if (el) el.value = v || '';
-}
+// Notification channels: a list of per-user instances plus a type catalog that
+// drives the "add a channel" dropdown and its per-type form.
+let NOTIFY_TYPES = [];
+let NOTIFY_CHANNELS = [];
+const channelForm = { mode: null, type: null, id: null };
 
 async function loadNotify() {
   const data = await api('/api/me/notify');
+  NOTIFY_TYPES = data.types || [];
+  NOTIFY_CHANNELS = data.channels || [];
   $('#trigger-mode').value = data.trigger;
-  const c = data.channels;
-  setVal('#ch-ntfy-url', c.ntfyUrl);
-  setVal('#ch-ntfy-token', c.ntfyToken);
-  setVal('#ch-po-token', c.pushoverToken);
-  setVal('#ch-po-user', c.pushoverUser);
-  setVal('#ch-go-url', c.gotifyUrl);
-  setVal('#ch-go-token', c.gotifyToken);
-  setVal('#ch-email', c.smtpTo);
-  setVal('#ch-wh-url', c.webhookUrl);
-  $('#ch-wh-format').value = c.webhookFormat || 'json';
-  setVal('#ch-apprise', c.appriseUrls);
-  $('#ch-email-note').textContent = data.infra.smtp ? '' : '— server email not set up';
-  $('#ch-apprise-note').textContent = data.infra.apprise ? '' : '— server Apprise not set up';
-  updatePushUi(data);
+
+  $('#channel-type').innerHTML = NOTIFY_TYPES.map(
+    (t) => `<option value="${t.type}"${t.available ? '' : ' disabled'}>${escapeHtml(t.name)}${t.available ? '' : ' — server email not set up'}</option>`,
+  ).join('');
+
+  renderChannels();
+  updatePushUi();
 }
 
-function collectNotify() {
-  return {
-    trigger: $('#trigger-mode').value,
-    ntfyUrl: $('#ch-ntfy-url').value,
-    ntfyToken: $('#ch-ntfy-token').value,
-    pushoverToken: $('#ch-po-token').value,
-    pushoverUser: $('#ch-po-user').value,
-    gotifyUrl: $('#ch-go-url').value,
-    gotifyToken: $('#ch-go-token').value,
-    smtpTo: $('#ch-email').value,
-    webhookUrl: $('#ch-wh-url').value,
-    webhookFormat: $('#ch-wh-format').value,
-    appriseUrls: $('#ch-apprise').value,
-  };
+function typeMeta(type) {
+  return NOTIFY_TYPES.find((t) => t.type === type);
 }
 
-function updatePushUi(data) {
-  const hint = $('#push-hint');
-  const btn = $('#push-toggle');
-  if (!data.infra.webpush) {
-    hint.textContent =
-      'Web Push isn’t configured on the server (set VAPID keys). See the README.';
-    btn.disabled = true;
+function channelSummary(ch) {
+  const meta = typeMeta(ch.type);
+  const firstKey = meta?.fields?.[0]?.key;
+  return (firstKey && ch.config[firstKey]) || '';
+}
+
+function renderChannels() {
+  const list = $('#channels-list');
+  if (!NOTIFY_CHANNELS.length) {
+    list.innerHTML = '<p class="hint">No channels yet — add one below.</p>';
     return;
   }
+  list.innerHTML = NOTIFY_CHANNELS.map((ch) => {
+    const name = typeMeta(ch.type)?.name || ch.type;
+    const label = ch.label ? `<span class="ch-label">${escapeHtml(ch.label)}</span>` : '';
+    return `<div class="channel-row${ch.enabled ? '' : ' off'}" data-id="${ch.id}">
+      <label class="toggle ch-enable" title="${ch.enabled ? 'Enabled' : 'Disabled'}">
+        <input type="checkbox" data-chact="toggle" data-id="${ch.id}" ${ch.enabled ? 'checked' : ''} /></label>
+      <span class="ch-main">
+        <span class="ch-name">${escapeHtml(name)}</span>${label}
+        <span class="ch-sum mono">${escapeHtml(channelSummary(ch))}</span>
+      </span>
+      <span class="ch-actions">
+        <button class="btn small" data-chact="test" data-id="${ch.id}">Test</button>
+        <button class="btn small" data-chact="edit" data-id="${ch.id}">Edit</button>
+        <button class="btn small danger" data-chact="remove" data-id="${ch.id}">Remove</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function renderChannelField(f, value) {
+  const id = `cf-${f.key}`;
+  const hint = f.hint ? `<span class="cf-hint">${escapeHtml(f.hint)}</span>` : '';
+  const optTag = f.required ? '' : ' <span class="opt">optional</span>';
+  const label = `<label class="field-label" for="${id}">${escapeHtml(f.label)}${optTag}</label>`;
+  if (f.type === 'select') {
+    const opts = (f.options || [])
+      .map((o) => `<option value="${o.value}"${o.value === value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`)
+      .join('');
+    return `<div class="field">${label}<select id="${id}" data-fkey="${f.key}">${opts}</select>${hint}</div>`;
+  }
+  if (f.type === 'textarea') {
+    return `<div class="field">${label}<textarea id="${id}" data-fkey="${f.key}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(value)}</textarea>${hint}</div>`;
+  }
+  const inputType = f.type === 'password' ? 'password' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text';
+  return `<div class="field">${label}<input id="${id}" data-fkey="${f.key}" type="${inputType}" autocomplete="off" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(value)}" />${hint}</div>`;
+}
+
+function openChannelForm(mode, type, channel) {
+  const meta = typeMeta(type);
+  if (!meta) return;
+  channelForm.mode = mode;
+  channelForm.type = type;
+  channelForm.id = channel?.id ?? null;
+  const cfg = channel?.config || {};
+  const fields = meta.fields.map((f) => renderChannelField(f, cfg[f.key] ?? '')).join('');
+  $('#channel-form').innerHTML = `
+    <div class="cf-head">${mode === 'edit' ? 'Edit' : 'New'} ${escapeHtml(meta.name)} channel</div>
+    <div class="field"><label class="field-label" for="cf-label">Label <span class="opt">optional</span></label>
+      <input id="cf-label" autocomplete="off" placeholder="e.g. My phone" value="${escapeHtml(channel?.label || '')}" /></div>
+    ${fields}
+    <div class="row" style="margin-top:10px">
+      <button id="cf-save" class="btn primary">${mode === 'edit' ? 'Save' : 'Add'}</button>
+      <button id="cf-test" class="btn">Test</button>
+      <button id="cf-cancel" class="btn">Cancel</button>
+    </div>
+    <p class="hint" id="cf-msg"></p>`;
+  $('#channel-form').classList.remove('hidden');
+}
+
+function closeChannelForm() {
+  channelForm.mode = null;
+  channelForm.type = null;
+  channelForm.id = null;
+  $('#channel-form').classList.add('hidden');
+  $('#channel-form').innerHTML = '';
+}
+
+function collectChannelForm() {
+  const config = {};
+  $('#channel-form')
+    .querySelectorAll('[data-fkey]')
+    .forEach((el) => {
+      config[el.dataset.fkey] = el.value;
+    });
+  return { label: $('#cf-label').value, config };
+}
+
+function updatePushUi() {
+  const hint = $('#push-hint');
+  const btn = $('#push-toggle');
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     hint.textContent = 'This browser doesn’t support push notifications.';
     btn.disabled = true;
@@ -509,6 +588,7 @@ async function loadCredentials() {
         </select>
         <span class="a-actions">
           <button class="btn small" data-credact="save" data-code="${c.code}">Save</button>
+          <button class="btn small" data-credact="test" data-code="${c.code}">Test</button>
           ${c.hasOwn ? `<button class="btn small danger" data-credact="clear" data-code="${c.code}">Clear</button>` : ''}
         </span>
       </div>`;
@@ -520,20 +600,41 @@ $('#creds-list').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-credact]');
   if (!btn) return;
   const code = btn.dataset.code;
+  const creds = () => ({
+    clientId: $(`[data-cid="${code}"]`).value.trim(),
+    clientSecret: $(`[data-csec="${code}"]`).value.trim(),
+    env: $(`[data-cenv="${code}"]`).value,
+  });
+  const msg = $('#creds-msg');
+
+  // Test authenticates without saving, so don't reload the row (it would wipe
+  // anything just typed in). Other actions persist, then refresh the list.
+  if (btn.dataset.credact === 'test') {
+    msg.textContent = `Testing ${code.toUpperCase()} API keys…`;
+    msg.className = 'hint';
+    btn.disabled = true;
+    try {
+      await api(`/api/me/credentials/${code}/test`, { method: 'POST', body: JSON.stringify(creds()) });
+      msg.textContent = `✓ ${code.toUpperCase()} API keys work`;
+      msg.className = 'hint ok-line';
+    } catch (err) {
+      msg.textContent = `✗ ${code.toUpperCase()}: ${err.message}`;
+      msg.className = 'hint err-line';
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
+
   try {
     if (btn.dataset.credact === 'save') {
-      await api(`/api/me/credentials/${code}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          clientId: $(`[data-cid="${code}"]`).value.trim(),
-          clientSecret: $(`[data-csec="${code}"]`).value.trim(),
-          env: $(`[data-cenv="${code}"]`).value,
-        }),
-      });
+      await api(`/api/me/credentials/${code}`, { method: 'PUT', body: JSON.stringify(creds()) });
     } else if (btn.dataset.credact === 'clear') {
       await api(`/api/me/credentials/${code}`, { method: 'DELETE' });
     }
+    msg.textContent = '';
     await loadCredentials();
+    await loadCarriers();
   } catch (err) {
     alert(err.message);
   }
@@ -551,18 +652,7 @@ $('#settings-modal').addEventListener('click', (e) => {
 });
 
 $('#trigger-mode').addEventListener('change', async (e) => {
-  await api('/api/me/notify', { method: 'PUT', body: JSON.stringify({ trigger: e.target.value }) });
-});
-
-$('#notify-save').addEventListener('click', async () => {
-  const msg = $('#notify-msg');
-  try {
-    await api('/api/me/notify', { method: 'PUT', body: JSON.stringify(collectNotify()) });
-    msg.textContent = 'Saved.';
-    await loadNotify();
-  } catch (err) {
-    msg.textContent = err.message;
-  }
+  await api('/api/me/notify/trigger', { method: 'PUT', body: JSON.stringify({ trigger: e.target.value }) });
 });
 
 $('#push-toggle').addEventListener('click', async (e) => {
@@ -579,20 +669,116 @@ $('#push-toggle').addEventListener('click', async (e) => {
   }
 });
 
-$('#test-notify').addEventListener('click', async () => {
-  const out = $('#notify-msg');
-  out.textContent = 'Sending…';
+// Open the add-a-channel form for the selected type.
+$('#channel-add').addEventListener('click', () => {
+  const type = $('#channel-type').value;
+  if (type) openChannelForm('add', type);
+});
+
+// Save / test / cancel inside the channel form.
+$('#channel-form').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const msg = $('#cf-msg');
+
+  if (btn.id === 'cf-cancel') {
+    closeChannelForm();
+    return;
+  }
+
+  const { label, config } = collectChannelForm();
+
+  if (btn.id === 'cf-test') {
+    msg.textContent = 'Sending test…';
+    msg.className = 'hint';
+    btn.disabled = true;
+    try {
+      await api('/api/me/notify/channels/new/test', {
+        method: 'POST',
+        body: JSON.stringify({ type: channelForm.type, config }),
+      });
+      msg.textContent = '✓ Test sent';
+      msg.className = 'hint ok-line';
+    } catch (err) {
+      msg.textContent = `✗ ${err.message}`;
+      msg.className = 'hint err-line';
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  if (btn.id === 'cf-save') {
+    btn.disabled = true;
+    try {
+      if (channelForm.mode === 'edit') {
+        await api(`/api/me/notify/channels/${channelForm.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ label, config }),
+        });
+      } else {
+        await api('/api/me/notify/channels', {
+          method: 'POST',
+          body: JSON.stringify({ type: channelForm.type, label, config }),
+        });
+      }
+      closeChannelForm();
+      await loadNotify();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'hint err-line';
+      btn.disabled = false;
+    }
+  }
+});
+
+// Per-channel actions in the list: enable toggle, test, edit, remove.
+$('#channels-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-chact]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const act = btn.dataset.chact;
+  const msg = $('#notify-msg');
+  msg.textContent = '';
+  msg.className = 'hint';
+
+  if (act === 'edit') {
+    const ch = NOTIFY_CHANNELS.find((c) => String(c.id) === String(id));
+    if (ch) openChannelForm('edit', ch.type, ch);
+    return;
+  }
+
+  btn.disabled = true;
   try {
-    const r = await api('/api/me/notify/test', { method: 'POST' });
-    const sent = r.sent?.length || 0;
-    const failed = r.failed?.length || 0;
-    out.textContent = sent
-      ? `Sent to ${sent} channel${sent === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`
-      : failed
-        ? `All ${failed} channel(s) failed, check server logs.`
-        : 'No channels configured yet.';
+    if (act === 'test') {
+      msg.textContent = 'Sending test…';
+      await api(`/api/me/notify/channels/${id}/test`, { method: 'POST' });
+      msg.textContent = '✓ Test sent';
+      msg.className = 'hint ok-line';
+    } else if (act === 'remove') {
+      if (!confirm('Remove this notification channel?')) { btn.disabled = false; return; }
+      await api(`/api/me/notify/channels/${id}`, { method: 'DELETE' });
+      await loadNotify();
+    }
   } catch (err) {
-    out.textContent = err.message;
+    msg.textContent = `✗ ${err.message}`;
+    msg.className = 'hint err-line';
+    btn.disabled = false;
+  }
+});
+
+// Enable/disable toggle fires on the checkbox change.
+$('#channels-list').addEventListener('change', async (e) => {
+  const box = e.target.closest('input[data-chact="toggle"]');
+  if (!box) return;
+  try {
+    await api(`/api/me/notify/channels/${box.dataset.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: box.checked }),
+    });
+    await loadNotify();
+  } catch (err) {
+    $('#notify-msg').textContent = err.message;
   }
 });
 

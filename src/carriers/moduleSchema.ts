@@ -46,6 +46,8 @@ export interface ScraperSpec {
   rowSelector: string;
   fields: FieldMap;
   banner?: string;
+  /** Selector for the "expected/estimated delivery" text on the page. */
+  estimatedDelivery?: string;
   fastJson?: FastJsonSpec;
 }
 
@@ -195,6 +197,12 @@ export function validateModule(
       checkFields(m.scraper.fields, errors, 'scraper.fields');
       if (m.scraper.banner !== undefined && typeof m.scraper.banner !== 'string') {
         errors.push('scraper.banner must be a string');
+      }
+      if (
+        m.scraper.estimatedDelivery !== undefined &&
+        typeof m.scraper.estimatedDelivery !== 'string'
+      ) {
+        errors.push('scraper.estimatedDelivery must be a string');
       }
       if (m.scraper.browser?.warmupUrl !== undefined) {
         checkUrlTemplate(m.scraper.browser.warmupUrl, errors, 'scraper.browser.warmupUrl');

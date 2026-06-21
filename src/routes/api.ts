@@ -5,6 +5,8 @@ import { carrierName, carrierStatuses, has as carrierExists } from '../carriers/
 import { detectCarrier, normalizeTrackingNumber } from '../carriers/detect.js';
 import { refreshById } from '../services/tracking.js';
 import { getUserById } from '../db/users.js';
+import { hasApiProvider } from '../carriers/apiProviders.js';
+import { listUserCredentialCarriers } from '../db/credentials.js';
 import {
   addShare,
   isSharedWith,
@@ -49,7 +51,18 @@ function managedPackage(req: FastifyRequest, id: number) {
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health', async () => ({ ok: true }));
 
-  app.get('/api/carriers', async () => carrierStatuses());
+  // A carrier with an official API shows "API" once the viewer has saved keys
+  // for it; otherwise it reports the scraper module it falls back to. The
+  // API-active state is per-user, so this depends on who's asking.
+  app.get('/api/carriers', async (req) => {
+    const uid = currentOwner(req) ?? '';
+    const withKeys = new Set(listUserCredentialCarriers(uid).map((r) => r.carrier));
+    return carrierStatuses().map((c) => ({
+      ...c,
+      apiAvailable: hasApiProvider(c.code),
+      apiActive: hasApiProvider(c.code) && withKeys.has(c.code),
+    }));
+  });
 
   // Carrier auto-detect for the add form.
   app.get<{ Querystring: { trackingNumber?: string } }>('/api/detect', async (req) => {

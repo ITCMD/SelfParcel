@@ -1,8 +1,10 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { config } from '../../config.js';
-import type { NotificationChannel } from '../types.js';
+import { field, type NotificationChannel } from '../types.js';
 
-// Email via SMTP. Transporter is built lazily and reused.
+// Email via SMTP. The relay (host/from) is the one server-wide piece of notify
+// config; each user only supplies their recipient address. Transporter is built
+// lazily and reused.
 
 let transporter: Transporter | null = null;
 
@@ -20,18 +22,29 @@ function getTransporter(): Transporter {
   return transporter;
 }
 
-// The relay (host/from) is server-wide; each user supplies their own recipient.
-export const smtpChannel: NotificationChannel = {
-  id: 'smtp',
-  name: 'Email',
-  isConfigured: (t) =>
-    Boolean(config.notify.smtp.host && config.notify.smtp.from && t.channels.smtpTo),
+export function smtpRelayConfigured(): boolean {
+  return Boolean(config.notify.smtp.host && config.notify.smtp.from);
+}
 
-  async send(msg, t) {
+export const smtpChannel: NotificationChannel = {
+  type: 'email',
+  name: 'Email',
+  requiresSmtpRelay: true,
+  fields: [
+    { key: 'to', label: 'Recipient address', type: 'email', required: true, placeholder: 'you@example.com' },
+  ],
+  validate: (c) => {
+    if (!field(c, 'to')) return 'A recipient address is required';
+    if (!smtpRelayConfigured()) return 'The server has no SMTP relay configured (admin must set SMTP_HOST/SMTP_FROM)';
+    return null;
+  },
+
+  async send(msg, c) {
+    if (!smtpRelayConfigured()) throw new Error('SMTP relay not configured on the server');
     const text = msg.url ? `${msg.body}\n\n${msg.url}` : msg.body;
     await getTransporter().sendMail({
       from: config.notify.smtp.from,
-      to: t.channels.smtpTo,
+      to: field(c, 'to'),
       subject: msg.title,
       text,
     });

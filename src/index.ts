@@ -6,6 +6,8 @@ import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
 import { config } from './config.js';
 import { migrate } from './db/index.js';
+import { migrateLegacyNotifyChannels } from './db/notify.js';
+import { ensureVapidKeys } from './notify/vapid.js';
 import { seedBuiltinModules } from './db/modules.js';
 import { reloadModules } from './carriers/registry.js';
 import { registerApiRoutes } from './routes/api.js';
@@ -23,9 +25,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function main(): Promise<void> {
   migrate();
+  migrateLegacyNotifyChannels();
   seedBuiltinModules();
   reloadModules();
   purgeExpiredSessions();
+  // Ensure a VAPID keypair exists so browser push works without admin setup.
+  ensureVapidKeys();
 
   // A chosen auth mode must be fully configured, or the app could come up
   // unprotected without anyone noticing.

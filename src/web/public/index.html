@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfParcel - Package Tracking</title>
+    <link rel="icon" href="/selfparcel.ico" sizes="any" />
     <link rel="stylesheet" href="/style.css" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#24348c" />
@@ -186,8 +187,9 @@
         <div class="modal-sub">Your tracking and notification preferences</div>
 
         <div class="log-head">Carrier API keys</div>
-        <p class="hint">Add your own UPS/FedEx API keys to use the official API. Leave blank to scrape the public page instead.</p>
+        <p class="hint">Add your own UPS/FedEx API keys to use the official API. Leave blank to scrape the public page instead. Use <strong>Test</strong> to check a key pair before saving.</p>
         <div id="creds-list" class="user-list"></div>
+        <p class="hint" id="creds-msg"></p>
 
         <div class="log-head">When to notify</div>
         <div class="field">
@@ -203,32 +205,14 @@
         <button id="push-toggle" class="btn">Enable on this device</button>
 
         <div class="log-head">Your notification channels</div>
-        <div class="creds-grid">
-          <div class="field"><label class="field-label" for="ch-ntfy-url">ntfy topic URL</label>
-            <input id="ch-ntfy-url" autocomplete="off" placeholder="https://ntfy.sh/my-parcels" /></div>
-          <div class="field"><label class="field-label" for="ch-ntfy-token">ntfy token <span class="opt">optional</span></label>
-            <input id="ch-ntfy-token" type="password" autocomplete="off" /></div>
-          <div class="field"><label class="field-label" for="ch-po-token">Pushover app token</label>
-            <input id="ch-po-token" type="password" autocomplete="off" /></div>
-          <div class="field"><label class="field-label" for="ch-po-user">Pushover user key</label>
-            <input id="ch-po-user" autocomplete="off" /></div>
-          <div class="field"><label class="field-label" for="ch-go-url">Gotify server URL</label>
-            <input id="ch-go-url" autocomplete="off" placeholder="https://gotify.example.com" /></div>
-          <div class="field"><label class="field-label" for="ch-go-token">Gotify app token</label>
-            <input id="ch-go-token" type="password" autocomplete="off" /></div>
-          <div class="field"><label class="field-label" for="ch-email">Email address <span id="ch-email-note" class="opt"></span></label>
-            <input id="ch-email" type="email" autocomplete="off" placeholder="you@example.com" /></div>
-          <div class="field"><label class="field-label" for="ch-wh-url">Webhook URL</label>
-            <input id="ch-wh-url" autocomplete="off" /></div>
-          <div class="field"><label class="field-label" for="ch-wh-format">Webhook format</label>
-            <select id="ch-wh-format"><option value="json">json</option><option value="discord">discord</option><option value="slack">slack</option></select></div>
-          <div class="field"><label class="field-label" for="ch-apprise">Apprise URLs <span id="ch-apprise-note" class="opt"></span></label>
-            <input id="ch-apprise" autocomplete="off" placeholder="ntfy://..., pushover://..." /></div>
+        <p class="hint">Add as many as you like — each is independent. Pick a type to add one.</p>
+        <div id="channels-list" class="channel-list"></div>
+
+        <div class="add-channel">
+          <select id="channel-type" aria-label="Notification type"></select>
+          <button id="channel-add" class="btn">Add channel</button>
         </div>
-        <div class="row" style="margin-top:12px">
-          <button id="notify-save" class="btn primary">Save</button>
-          <button id="test-notify" class="btn">Send test</button>
-        </div>
+        <div id="channel-form" class="channel-form hidden"></div>
         <p class="hint" id="notify-msg"></p>
       </div>
     </div>
