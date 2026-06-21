@@ -66,7 +66,7 @@ const usps: CarrierModule = {
       location: '.tb-location, .tracking-location',
     },
     estimatedDelivery:
-      '.expected-delivery-date, .eddText, .expected_delivery_date, [class*="expected-delivery"]',
+      '.expected_delivery, .expected-delivery-date, .eddText, [class*="expected_delivery"], [class*="expected-delivery"]',
   },
 };
 
@@ -179,6 +179,6 @@ const fedex: CarrierModule = {
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '2', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
-  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '4', module: usps },
+  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '5', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
 ];

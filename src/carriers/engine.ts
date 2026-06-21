@@ -60,9 +60,13 @@ function parseEstimatedDelivery(raw: string): string | null {
   if (!text) return null;
   const pad = (n: number) => String(n).padStart(2, '0');
 
-  // "June 27, 2025" / "Sept 3 2025" / "Jun 25th, 2025"
+  // "June 27, 2025" / "Sept 3 2025" / "Jun 25th, 2025" (month first)
   let m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(text);
   if (m) return `${m[3]}-${pad(MONTH_NUM[m[1].toLowerCase()])}-${pad(Number(m[2]))}`;
+
+  // "24 June 2026" / "24th June 2026" (day first — USPS renders it this way)
+  m = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b/i.exec(text);
+  if (m) return `${m[3]}-${pad(MONTH_NUM[m[2].toLowerCase()])}-${pad(Number(m[1]))}`;
 
   // "06/24/2025" or "12/9/25"
   m = /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/.exec(text);
