@@ -60,6 +60,20 @@ function fmtDate(iso) {
   });
 }
 
+// Friendly relative time, e.g. "just now", "5m ago", "3h ago", "2d ago".
+function timeAgo(iso) {
+  if (!iso) return 'never';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 45) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 async function loadCarriers() {
   const carriers = await api('/api/carriers');
   $('#carrier-status').innerHTML = carriers
@@ -84,11 +98,12 @@ async function loadPackages() {
     .map((p, i) => {
       const status = p.status || 'unknown';
       const checked = p.last_checked_at
-        ? `Updated ${fmtDate(p.last_checked_at)}`
+        ? `Refreshed ${timeAgo(p.last_checked_at)}`
         : 'Not checked yet';
       const est = p.est_delivery ? ` · ETA ${fmtDate(p.est_delivery)}` : '';
+      // Always show the refresh time; append the error as a secondary note.
       const meta = p.last_error
-        ? `<span class="err">⚠ ${escapeHtml(p.last_error)}</span>`
+        ? `${checked} · <span class="err">⚠ ${escapeHtml(p.last_error)}</span>`
         : `${checked}${est} · ${p.eventCount} events`;
 
       const title = p.label
@@ -146,6 +161,7 @@ async function openDetail(id) {
       <span class="stamp ${p.status}"><span class="sdot"></span>${STATUS_LABEL[p.status] || p.status}</span>
       ${p.est_delivery ? `<span class="modal-sub">ETA ${fmtDate(p.est_delivery)}</span>` : ''}
     </div>
+    <div class="modal-sub">${p.last_checked_at ? `Last refreshed ${timeAgo(p.last_checked_at)} (${fmtDate(p.last_checked_at)})` : 'Not refreshed yet'}</div>
     ${p.last_error ? `<div class="error-line">⚠ ${escapeHtml(p.last_error)}</div>` : ''}
     <div class="log-head">Scan history</div>
     ${

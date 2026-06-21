@@ -18,6 +18,8 @@ export interface RefreshOutcome {
   status?: string;
   notified?: boolean;
   error?: string;
+  /** True when the fetch failed but the package already had good data. */
+  transient?: boolean;
 }
 
 export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
@@ -51,6 +53,15 @@ export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
         : err instanceof Error
           ? err.message
           : String(err);
+
+    // If the package is already tracking, a failed fetch is almost always a
+    // transient scrape blip (carrier briefly blocked us). Keep the last good
+    // state visible instead of clobbering it with an error.
+    const hasGoodData = pkg.status !== 'unknown' || repo.getEvents(pkg.id).length > 0;
+    if (hasGoodData) {
+      repo.markChecked(pkg.id);
+      return { ok: false, newEvents: 0, error: message, transient: true };
+    }
     repo.recordError(pkg.id, message);
     return { ok: false, newEvents: 0, error: message };
   }

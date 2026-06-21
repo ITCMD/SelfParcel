@@ -112,6 +112,15 @@ export function recordError(id: number, message: string): void {
   ).run(message, id);
 }
 
+// Record a refresh attempt without surfacing an error (used when a transient
+// fetch failure hits a package that already has good tracking data).
+export function markChecked(id: number): void {
+  db.prepare(
+    `UPDATE packages SET last_checked_at = datetime('now'), last_error = NULL
+     WHERE id = ?`,
+  ).run(id);
+}
+
 function eventKey(e: { timestamp: string | null; description: string; location?: string }): string {
   return createHash('sha1')
     .update(`${e.timestamp ?? ''}|${e.description}|${e.location ?? ''}`)
