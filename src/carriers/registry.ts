@@ -40,6 +40,14 @@ export function carrierName(code: CarrierCode): string {
   return moduleMeta.get(code)?.name ?? CARRIER_NAMES[code] ?? code.toUpperCase();
 }
 
+/** Public, user-facing tracking URL for a package, from the module's request
+ *  template. Null if the carrier is unknown. */
+export function carrierTrackingUrl(code: CarrierCode, tn: string): string | null {
+  const url = moduleMeta.get(code)?.module.request.url;
+  if (!url) return null;
+  return url.replace(/\{tn\}/g, encodeURIComponent(tn));
+}
+
 export function allProviders(): CarrierProvider[] {
   return [...moduleProviders.values()];
 }

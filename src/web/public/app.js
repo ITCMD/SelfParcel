@@ -88,6 +88,31 @@ function fmtEta(iso) {
   return fmtDate(iso);
 }
 
+// Parse a date-only (YYYY-MM-DD) or datetime ETA into a local Date at midnight.
+function etaDate(iso) {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Compact ETA for the headline: "Today" / "Tomorrow" / a weekday name when it's
+// within the coming week (so "this Wednesday" reads as just "Wednesday"), and a
+// full date once it's a week or more out (or in the past).
+function etaShort(iso) {
+  const d = etaDate(iso);
+  if (!d) return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((d - today) / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days > 1 && days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 // Friendly relative time, e.g. "just now", "5m ago", "3h ago", "2d ago".
 function timeAgo(iso) {
   if (!iso) return 'never';
@@ -128,15 +153,18 @@ async function loadPackages() {
       const checked = p.last_checked_at
         ? `Refreshed ${timeAgo(p.last_checked_at)}`
         : 'Not checked yet';
-      const est = p.est_delivery ? ` · ETA ${fmtEta(p.est_delivery)}` : '';
       // Always show the refresh time; append the error as a secondary note.
       const meta = p.last_error
         ? `${checked} · <span class="err">⚠ ${escapeHtml(p.last_error)}</span>`
-        : `${checked}${est} · ${p.eventCount} events`;
+        : `${checked} · ${p.eventCount} events`;
 
-      const title = p.label
-        ? `<div class="pkg-title">${escapeHtml(p.label)}</div>`
-        : `<div class="pkg-title is-tn">${escapeHtml(p.tracking_number)}</div>`;
+      // Headline ETA next to the name, e.g. "Battery — Wednesday".
+      const etaTag =
+        p.est_delivery && status !== 'delivered'
+          ? `<span class="pkg-eta">— ${escapeHtml(etaShort(p.est_delivery))}</span>`
+          : '';
+      const name = p.label ? escapeHtml(p.label) : escapeHtml(p.tracking_number);
+      const title = `<div class="pkg-title${p.label ? '' : ' is-tn'}">${name}${etaTag}</div>`;
       // When a label fills the title slot, push the tracking number up to the eyebrow.
       const eyebrowTn = p.label
         ? `<span class="pkg-sep">·</span><span class="pkg-tn">${escapeHtml(p.tracking_number)}</span>`
@@ -182,12 +210,18 @@ function escapeHtml(s) {
 
 async function openDetail(id) {
   const { package: p, events } = await api(`/api/packages/${id}`);
+  const etaHead =
+    p.est_delivery && p.status !== 'delivered'
+      ? ` <span class="eta-head" title="Estimated delivery ${escapeHtml(fmtEta(p.est_delivery))}">— ${escapeHtml(etaShort(p.est_delivery))}</span>`
+      : '';
+  const openBtn = p.trackingUrl
+    ? `<a class="tn-open" href="${escapeHtml(p.trackingUrl)}" target="_blank" rel="noopener noreferrer" title="Open in ${escapeHtml(p.carrierName)} tracking" aria-label="Open in carrier tracking">↗</a>`
+    : '';
   $('#modal-body').innerHTML = `
-    <h2>${p.label ? escapeHtml(p.label) : escapeHtml(p.tracking_number)}</h2>
-    <div class="modal-sub">${escapeHtml(p.carrierName)} · ${escapeHtml(p.tracking_number)}</div>
+    <h2>${p.label ? escapeHtml(p.label) : escapeHtml(p.tracking_number)}${etaHead}</h2>
+    <div class="modal-sub">${escapeHtml(p.carrierName)} · <button class="tn-copy" type="button" data-tn="${escapeHtml(p.tracking_number)}" title="Click to copy">${escapeHtml(p.tracking_number)}</button>${openBtn}</div>
     <div class="modal-row">
       <span class="stamp ${p.status}"><span class="sdot"></span>${STATUS_LABEL[p.status] || p.status}</span>
-      ${p.est_delivery ? `<span class="modal-sub">ETA ${fmtEta(p.est_delivery)}</span>` : ''}
     </div>
     <div class="modal-sub">${p.last_checked_at ? `Last refreshed ${timeAgo(p.last_checked_at)} (${fmtDate(p.last_checked_at)})` : 'Not refreshed yet'}</div>
     ${p.last_error ? `<div class="error-line">⚠ ${escapeHtml(p.last_error)}</div>` : ''}
@@ -207,6 +241,24 @@ async function openDetail(id) {
     }`;
   $('#detail-modal').classList.remove('hidden');
 }
+
+// Click the tracking number in the detail view to copy it.
+$('#modal-body').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.tn-copy');
+  if (!btn) return;
+  const prev = btn.dataset.tn;
+  try {
+    await navigator.clipboard.writeText(prev);
+  } catch {
+    /* clipboard needs a secure context; ignore and still flash feedback */
+  }
+  btn.classList.add('copied');
+  btn.textContent = 'Copied ✓';
+  setTimeout(() => {
+    btn.textContent = prev;
+    btn.classList.remove('copied');
+  }, 1200);
+});
 
 $('#add-form').addEventListener('submit', async (e) => {
   e.preventDefault();

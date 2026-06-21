@@ -438,6 +438,11 @@ select:focus {
   font-size: 15px;
   letter-spacing: 0.02em;
 }
+.pkg-eta {
+  color: var(--accent);
+  font-weight: 600;
+  margin-left: 6px;
+}
 .pkg-meta {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -587,6 +592,47 @@ select:focus {
   align-items: center;
   gap: 10px;
   margin: 14px 0 4px;
+}
+/* ETA next to the package name in the detail header */
+.eta-head {
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* Tracking number: click to copy, with an open-in-carrier button beside it */
+.tn-copy {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--line-strong);
+}
+.tn-copy:hover {
+  color: var(--accent);
+}
+.tn-copy.copied {
+  color: var(--st-delivered);
+  border-bottom-color: transparent;
+}
+.tn-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  margin-left: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--ink-soft);
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+.tn-open:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .log-head {

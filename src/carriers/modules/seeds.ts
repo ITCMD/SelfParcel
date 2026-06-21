@@ -43,13 +43,18 @@ const usps: CarrierModule = {
     in_transit: [
       'on the way',
       'in transit',
+      'preparing for delivery',
       'arriving',
       'departed',
       'arrived',
       'accepted',
+      'forwarded',
+      'redelivery',
       'moving within',
       'in possession',
       'picked up',
+      'usps in possession',
+      'processed',
     ],
   },
   scraper: {
@@ -179,6 +184,6 @@ const fedex: CarrierModule = {
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '2', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
-  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '6', module: usps },
+  { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '7', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
 ];

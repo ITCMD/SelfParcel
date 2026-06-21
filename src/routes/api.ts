@@ -1,7 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import * as repo from '../db/repo.js';
 import { config } from '../config.js';
-import { carrierName, carrierStatuses, has as carrierExists } from '../carriers/registry.js';
+import {
+  carrierName,
+  carrierStatuses,
+  carrierTrackingUrl,
+  has as carrierExists,
+} from '../carriers/registry.js';
 import { detectCarrier, normalizeTrackingNumber } from '../carriers/detect.js';
 import { refreshById } from '../services/tracking.js';
 import { getUserById } from '../db/users.js';
@@ -100,6 +105,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       package: {
         ...pkg,
         carrierName: carrierName(pkg.carrier),
+        trackingUrl: carrierTrackingUrl(pkg.carrier, pkg.tracking_number),
         isOwner: canManage(req, pkg),
       },
       events: repo.getEvents(pkg.id),
