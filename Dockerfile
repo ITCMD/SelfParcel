@@ -29,6 +29,9 @@ RUN npm run build
 FROM base AS runtime
 ENV NODE_ENV=production
 ENV DATABASE_PATH=/data/selfparcel.sqlite
+# Git commit baked in by CI; surfaced in the UI's version badge.
+ARG APP_COMMIT=""
+ENV APP_COMMIT=$APP_COMMIT
 COPY package.json ./
 COPY --from=deps /tmp/prod_node_modules ./node_modules
 COPY --from=build /app/dist ./dist

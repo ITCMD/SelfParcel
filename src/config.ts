@@ -1,7 +1,21 @@
 // Read once from the environment at startup.
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 function str(name: string, fallback = ''): string {
   return process.env[name] ?? fallback;
+}
+
+// Package version from package.json (one level above src/ and dist/ alike).
+function pkgVersion(): string {
+  try {
+    const url = new URL('../package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(fileURLToPath(url), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
 }
 
 function int(name: string, fallback: number): number {
@@ -36,6 +50,11 @@ const authMode: AuthMode = (() => {
 })();
 
 export const config = {
+  // Human-readable app version from package.json, and the git commit baked in at
+  // Docker build time (empty when running from source). Together they let the UI
+  // show, at a glance, exactly which build is running.
+  version: pkgVersion(),
+  commit: str('APP_COMMIT').trim(),
   port: int('PORT', 8080),
   host: str('HOST', '0.0.0.0'),
   databasePath: str('DATABASE_PATH', './data/selfparcel.sqlite'),

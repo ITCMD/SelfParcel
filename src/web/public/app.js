@@ -27,9 +27,26 @@ function onUnauthorized() {
   }
 }
 
+// Version badge in the top bar. Shows the package version, plus a short git
+// commit when the build baked one in, so you can tell which build is running.
+function renderVersion(me) {
+  const el = $('#app-version');
+  if (!el) return;
+  const version = me.version ? `v${me.version}` : '';
+  const shortSha = me.commit ? me.commit.slice(0, 7) : '';
+  if (!version && !shortSha) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.textContent = shortSha ? `${version} · ${shortSha}` : version;
+  el.title = me.commit ? `Build ${me.commit}` : 'Running from source';
+  el.classList.remove('hidden');
+}
+
 // Account area plus the admin buttons, driven by the session payload.
 function renderAccount(me) {
   AUTH_MODE = me.mode;
+  renderVersion(me);
   const el = $('#account');
   if (me.mode === 'none' || !me.authenticated) {
     el.classList.add('hidden');

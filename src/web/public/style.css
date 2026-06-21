@@ -140,6 +140,15 @@ body {
   padding-left: 9px;
   border-left: 1px solid var(--line-strong);
 }
+.version {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  cursor: default;
+}
+.version.hidden {
+  display: none;
+}
 .bar-right {
   display: flex;
   align-items: center;
@@ -900,7 +909,8 @@ select:focus {
   .pkg-main {
     flex-basis: 100%;
   }
-  .tagline {
+  .tagline,
+  .version {
     display: none;
   }
 }

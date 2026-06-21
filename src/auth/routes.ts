@@ -65,6 +65,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     authenticated: Boolean(req.user),
     user: req.user,
     isAdmin: req.user?.role === 'admin',
+    version: config.version,
+    commit: config.commit,
   }));
 
   app.get<{ Querystring: { returnTo?: string } }>('/auth/login', async (req, reply) => {
