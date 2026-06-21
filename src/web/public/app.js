@@ -46,7 +46,6 @@ function renderVersion(me) {
 // Account area plus the admin buttons, driven by the session payload.
 function renderAccount(me) {
   AUTH_MODE = me.mode;
-  renderVersion(me);
   const el = $('#account');
   if (me.mode === 'none' || !me.authenticated) {
     el.classList.add('hidden');
@@ -938,6 +937,7 @@ async function boot() {
     me = { mode: 'none', authenticated: false };
   }
   AUTH_MODE = me.mode;
+  renderVersion(me);
 
   if (me.mode !== 'none' && !me.authenticated) {
     if (me.mode === 'oidc') {

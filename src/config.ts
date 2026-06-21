@@ -1,5 +1,6 @@
 // Read once from the environment at startup.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +16,20 @@ function pkgVersion(): string {
     return pkg.version ?? '0.0.0';
   } catch {
     return '0.0.0';
+  }
+}
+
+// The git commit to show in the UI's version badge. CI bakes it into the Docker
+// image via APP_COMMIT; running from source, fall back to the checked-out HEAD
+// (no .git in the container, so that path is local-dev only).
+function gitCommit(): string {
+  const fromEnv = str('APP_COMMIT').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const root = fileURLToPath(new URL('..', import.meta.url));
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root }).toString().trim();
+  } catch {
+    return '';
   }
 }
 
@@ -54,7 +69,7 @@ export const config = {
   // Docker build time (empty when running from source). Together they let the UI
   // show, at a glance, exactly which build is running.
   version: pkgVersion(),
-  commit: str('APP_COMMIT').trim(),
+  commit: gitCommit(),
   port: int('PORT', 8080),
   host: str('HOST', '0.0.0.0'),
   databasePath: str('DATABASE_PATH', './data/selfparcel.sqlite'),
