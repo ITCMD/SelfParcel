@@ -1,6 +1,11 @@
 // SelfParcel service worker: Web Push delivery and notification clicks.
 // No offline caching on purpose, the app is data-driven and online-only.
 
+// A fetch handler is required for the browser to treat the app as installable
+// (so beforeinstallprompt fires). This is a plain network pass-through — it adds
+// nothing to the cache and provides no offline support.
+self.addEventListener('fetch', () => {});
+
 self.addEventListener('push', (event) => {
   let data = {};
   try {

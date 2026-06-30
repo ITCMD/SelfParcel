@@ -25,13 +25,26 @@
         <button id="open-users" class="btn ghost hidden" title="Manage users">Users</button>
         <button id="open-providers" class="btn ghost hidden" title="Shipping providers">Providers</button>
         <button id="open-settings" class="btn ghost" title="Notification settings">
-          <span class="ico">⚙</span> Settings
+          <span class="ico">⚙</span> <span class="lbl">Settings</span>
         </button>
         <button id="refresh-all" class="btn ghost" title="Refresh all active packages">
-          <span class="ico">↻</span> Refresh all
+          <span class="ico">↻</span> <span class="lbl">Refresh all</span>
         </button>
       </div>
     </header>
+
+    <!-- Install / enable-notifications nudge (shown only when relevant) -->
+    <div id="install-banner" class="install-banner hidden" role="region" aria-label="App install">
+      <span class="ib-icon" aria-hidden="true">📲</span>
+      <div class="ib-body">
+        <div class="ib-title" id="ib-title">Install SelfParcel</div>
+        <div class="ib-text" id="ib-text"></div>
+      </div>
+      <div class="ib-actions">
+        <button id="ib-action" class="btn primary small">Install app</button>
+        <button id="ib-dismiss" class="btn ghost small" aria-label="Dismiss">Not now</button>
+      </div>
+    </div>
 
     <main>
       <section class="intake" aria-label="Add a shipment">
@@ -45,7 +58,9 @@
                 class="mono"
                 placeholder="e.g. 1Z999AA10123456784"
                 autocomplete="off"
+                autocapitalize="characters"
                 spellcheck="false"
+                enterkeyhint="go"
                 required
               />
             </div>

@@ -840,6 +840,112 @@ function registerServiceWorker() {
   }
 }
 
+// ── Install / enable-notifications nudge ────────────────────────────────────
+// Web Push only works on iOS once the app is on the Home Screen, and is easy to
+// miss on Android/desktop too. This surfaces a small, dismissible banner: an
+// install prompt where the browser offers one, Add-to-Home-Screen steps on iOS,
+// and an "enable notifications" nudge once the app runs installed.
+let deferredInstallPrompt = null;
+const INSTALL_DISMISS_KEY = 'sp:install-dismissed';
+
+function isStandalone() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+function isIos() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+}
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+function hideInstallBanner() {
+  $('#install-banner').classList.add('hidden');
+}
+function showInstallBanner({ title, text, actionLabel, onAction }) {
+  if (localStorage.getItem(INSTALL_DISMISS_KEY)) return;
+  $('#ib-title').textContent = title;
+  $('#ib-text').textContent = text;
+  const action = $('#ib-action');
+  if (actionLabel) {
+    action.textContent = actionLabel;
+    action.classList.remove('hidden');
+    action.onclick = onAction;
+  } else {
+    action.classList.add('hidden');
+  }
+  $('#install-banner').classList.remove('hidden');
+}
+
+// Decide which (if any) nudge to show. The Chromium install path is driven by
+// the beforeinstallprompt listener below; this covers the other two states.
+function refreshInstallBanner() {
+  if (isStandalone()) {
+    if (
+      pushSupported() &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'default'
+    ) {
+      showInstallBanner({
+        title: 'Turn on notifications',
+        text: 'Get a push when your packages move.',
+        actionLabel: 'Enable',
+        onAction: async () => {
+          try {
+            await enablePush();
+            hideInstallBanner();
+          } catch (err) {
+            $('#ib-text').textContent = err.message;
+          }
+        },
+      });
+    } else {
+      hideInstallBanner();
+    }
+    return;
+  }
+  if (isIos() && pushSupported()) {
+    showInstallBanner({
+      title: 'Install for notifications',
+      text: 'In Safari, tap Share then “Add to Home Screen” to get push alerts.',
+      actionLabel: null,
+    });
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (isStandalone()) return;
+  showInstallBanner({
+    title: 'Install SelfParcel',
+    text: 'Add it to your device for quick access and notifications.',
+    actionLabel: 'Install app',
+    onAction: async () => {
+      hideInstallBanner();
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      try {
+        await deferredInstallPrompt.userChoice;
+      } catch {
+        /* user dismissed */
+      }
+      deferredInstallPrompt = null;
+    },
+  });
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  hideInstallBanner();
+});
+
+$('#ib-dismiss').addEventListener('click', () => {
+  localStorage.setItem(INSTALL_DISMISS_KEY, '1');
+  hideInstallBanner();
+});
+
 // Login gate, used in local auth mode.
 async function showLogin() {
   const cfg = await fetch('/auth/config').then((r) => r.json());
@@ -1195,9 +1301,15 @@ async function boot() {
 
   renderAccount(me);
   registerServiceWorker();
+  refreshInstallBanner();
   loadCarriers();
   loadPackages();
   setInterval(loadPackages, 60_000);
+
+  // Manifest shortcut: /?settings=1 opens settings on launch.
+  if (new URLSearchParams(location.search).get('settings') === '1') {
+    $('#open-settings').click();
+  }
 }
 
 boot();

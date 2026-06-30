@@ -835,11 +835,6 @@ select:focus {
   grid-template-columns: 1fr 1fr;
   gap: 10px 12px;
 }
-@media (max-width: 540px) {
-  .creds-grid {
-    grid-template-columns: 1fr;
-  }
-}
 .btn.muted-on {
   color: var(--st-ofd);
   border-color: var(--st-ofd);
@@ -1003,6 +998,43 @@ select:focus {
   color: var(--accent);
 }
 
+/* install / enable-notifications banner */
+.install-banner {
+  width: calc(100% - 36px);
+  max-width: 844px;
+  margin: 16px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--accent-tint);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: var(--r-md);
+  animation: rise 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.ib-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.ib-body {
+  flex: 1;
+  min-width: 0;
+}
+.ib-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.ib-text {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.ib-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* motion */
 @keyframes rise {
   from {
@@ -1022,6 +1054,16 @@ select:focus {
     opacity: 1;
   }
 }
+@keyframes sheet {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1032,23 +1074,162 @@ select:focus {
   }
 }
 
-/* responsive */
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+/* Notches / rounded corners on installed PWAs. */
+.manifest-bar {
+  padding-top: max(14px, env(safe-area-inset-top));
+}
+main {
+  padding-bottom: max(80px, env(safe-area-inset-bottom));
+}
+
+/* Touch devices: comfortable hit targets regardless of viewport width. */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+  }
+  .btn.small {
+    min-height: 38px;
+  }
+  input,
+  select {
+    min-height: 44px;
+  }
+  .modal-close {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 @media (max-width: 620px) {
-  .intake-grid {
-    flex-direction: column;
-    align-items: stretch;
+  .manifest-bar {
+    padding: max(12px, env(safe-area-inset-top)) 14px 12px;
+    gap: 10px;
   }
-  .intake-grid .btn.primary {
-    width: 100%;
-  }
-  .package {
+  .bar-right {
+    gap: 8px;
     flex-wrap: wrap;
-  }
-  .pkg-main {
-    flex-basis: 100%;
+    justify-content: flex-end;
   }
   .tagline,
   .version {
     display: none;
+  }
+
+  main {
+    padding: 18px 14px max(64px, env(safe-area-inset-bottom));
+  }
+  .install-banner {
+    width: calc(100% - 28px);
+    flex-wrap: wrap;
+  }
+  .ib-actions {
+    width: 100%;
+  }
+  .ib-actions .btn {
+    flex: 1;
+  }
+
+  /* intake form stacks */
+  .intake {
+    padding: 14px;
+  }
+  .intake-grid {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .field {
+    min-width: 0;
+  }
+  .intake-grid .btn.primary {
+    width: 100%;
+    height: 46px;
+  }
+
+  /* 16px inputs stop iOS from zooming on focus */
+  input,
+  select,
+  textarea,
+  .code-area {
+    font-size: 16px;
+  }
+
+  /* status line: chips on top, archived toggle beneath */
+  .statusline {
+    align-items: flex-start;
+  }
+
+  /* waybill card: name block full-width, status + actions reflow below */
+  .package {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 14px 14px 14px 18px;
+  }
+  .pkg-main {
+    flex-basis: 100%;
+    order: 1;
+  }
+  .stamp {
+    order: 2;
+  }
+  .pkg-actions {
+    order: 3;
+    margin-left: auto;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* modals become bottom sheets */
+  .modal {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal-content,
+  .modal-content.wide,
+  .modal-content.login-card {
+    max-width: 100%;
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: 22px 18px max(22px, env(safe-area-inset-bottom));
+    animation: sheet 0.26s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  .modal-close {
+    top: 10px;
+    right: 10px;
+    font-size: 30px;
+  }
+
+  /* admin / credential / channel rows stack */
+  .admin-row {
+    gap: 8px;
+  }
+  .admin-row input,
+  .admin-row select {
+    width: 100%;
+  }
+  .creds-grid {
+    grid-template-columns: 1fr;
+  }
+  .add-channel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Very narrow: collapse icon-buttons to icons only so the header fits. */
+@media (max-width: 430px) {
+  .wordmark {
+    font-size: 17px;
+  }
+  #open-settings .lbl,
+  #refresh-all .lbl {
+    display: none;
+  }
+  #open-settings,
+  #refresh-all {
+    padding: 9px 11px;
   }
 }
