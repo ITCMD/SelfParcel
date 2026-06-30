@@ -24,6 +24,7 @@
   --c-usps: #1c4e9c;
   --c-fedex: #6a1b9a;
   --c-speedpak: #e8590c;
+  --c-fourpx: #0a8f5b;
 
   /* status colors */
   --st-delivered: #1e8e5a;
@@ -66,6 +67,7 @@
     --c-usps: #6fa0e8;
     --c-fedex: #c084e8;
     --c-speedpak: #ff8a4c;
+    --c-fourpx: #3fc78a;
 
     --st-delivered: #4fc78a;
     --st-transit: #6fa0e8;
@@ -393,6 +395,9 @@ select:focus {
 }
 .package.carrier-speedpak {
   --rail: var(--c-speedpak);
+}
+.package.carrier-fourpx {
+  --rail: var(--c-fourpx);
 }
 
 .pkg-main {

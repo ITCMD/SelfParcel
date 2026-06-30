@@ -21,6 +21,8 @@ export interface ModuleRequest {
   url: string; // may contain the {tn} token
   method?: string;
   headers?: Record<string, string>;
+  /** Request body for POST APIs; may contain the {tn} token (raw, not URL-encoded). */
+  body?: string;
   maxRedirections?: number;
   timeoutMs?: number;
   maxBytes?: number;
@@ -182,6 +184,9 @@ export function validateModule(
   } else {
     checkUrlTemplate(m.request.url, errors, 'request.url');
     checkHeaders(m.request.headers, errors, 'request.headers');
+    if (m.request.body !== undefined && typeof m.request.body !== 'string') {
+      errors.push('request.body must be a string');
+    }
   }
 
   if (m.notFound !== undefined) {

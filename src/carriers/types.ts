@@ -13,6 +13,7 @@ export const CARRIER_NAMES: Record<string, string> = {
   usps: 'USPS',
   fedex: 'FedEx',
   speedpak: 'SpeedPAK',
+  fourpx: '4PX',
 };
 
 // Normalized status. Each provider maps its own vocabulary onto this small set

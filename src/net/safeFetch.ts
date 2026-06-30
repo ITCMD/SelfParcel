@@ -105,6 +105,8 @@ export interface SafeResponse {
 export interface SafeRequestOptions {
   method?: string;
   headers?: Record<string, string>;
+  /** Request body, for POST modules (e.g. a JSON tracking query). */
+  body?: string;
   requireHttps?: boolean;
   maxRedirects?: number;
   timeoutMs?: number;
@@ -144,6 +146,7 @@ export async function safeRequest(
       const res = await request(url.href, {
         method: (opts.method as any) ?? 'GET',
         headers: opts.headers,
+        body: opts.body,
         dispatcher,
         maxRedirections: 0,
         headersTimeout: timeoutMs,

@@ -181,9 +181,91 @@ const fedex: CarrierModule = {
   },
 };
 
+// 4PX exposes a public JSON tracking API (the one its own track.4px.com SPA
+// calls): POST listTrackV3 with a JSON body of query codes. No account, key, or
+// captcha needed, so this is a `json` module rather than a page scraper — the
+// SPA itself is JS-only and not worth rendering. A query code can be either the
+// "4PX...CN" shipper number or the "SPXOR..." server number; both resolve here.
+// Events come back newest-first under data[0].tracks, with ISO-8601 tkDate.
+const fourpx: CarrierModule = {
+  schema: MODULE_SCHEMA,
+  code: 'fourpx',
+  name: '4PX',
+  kind: 'json',
+  detect: [
+    { pattern: '^4PX\\d{10,18}[A-Z]{2}$' },
+    { pattern: '^SPX[A-Z]{2,4}\\d{16,20}$' },
+  ],
+  request: {
+    url: 'https://track.4px.com/track/v2/front/listTrackV3',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: '{"queryCodes":["{tn}"],"language":"en"}',
+    timeoutMs: 30000,
+  },
+  // result:0 is 4PX's error envelope (invalid/unknown number); the success
+  // envelope is result:1. An empty tracks array is handled by the engine.
+  notFound: ['"result"\\s*:\\s*0', 'tracking number must be'],
+  // 4PX event vocabulary -> normalized status, checked in order (first match
+  // wins). Status is derived from the newest scan's tkDesc; the numeric `status`
+  // field in the response is opaque, so we don't use it.
+  statusMap: {
+    delivered: ['delivered', 'signed by', 'pod', 'collected by recipient', 'picked up by customer'],
+    out_for_delivery: ['out for delivery', 'with delivery courier', 'delivery courier', 'last mile delivery'],
+    exception: [
+      'failed',
+      'exception',
+      'returned',
+      'return to',
+      'undeliverable',
+      'held',
+      'detained',
+      'destroyed',
+      'lost',
+    ],
+    pre_transit: [
+      'order created',
+      'shipment information received',
+      'pre-advice',
+      'electronic information',
+      'awaiting',
+      'label created',
+    ],
+    in_transit: [
+      'customs',
+      'cleared',
+      'departure',
+      'depart',
+      'arrived',
+      'arrival',
+      'hand over',
+      'airline',
+      'facility',
+      'transit',
+      'received',
+      'processed',
+      'measured',
+      'sorting',
+      'export',
+      'import',
+      'loaded',
+      'flight',
+    ],
+  },
+  json: {
+    eventsPath: 'data.0.tracks',
+    fields: {
+      description: 'tkDesc',
+      date: 'tkDate',
+      location: 'tkLocation',
+    },
+  },
+};
+
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '2', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
   { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '7', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
+  { code: 'fourpx', name: '4PX', kind: 'json', seedVersion: '1', module: fourpx },
 ];

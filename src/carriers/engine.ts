@@ -86,6 +86,12 @@ function fillTemplate(url: string, tn: string): string {
   return url.replace(/\{tn\}/g, encodeURIComponent(tn));
 }
 
+// Body templates aren't URL contexts, so the tracking number goes in raw (it's
+// already normalized to uppercase alphanumerics, so it's safe inside JSON).
+function fillBody(body: string | undefined, tn: string): string | undefined {
+  return body === undefined ? undefined : body.replace(/\{tn\}/g, tn);
+}
+
 function statusFromText(module: CarrierModule, text: string): TrackStatus {
   const t = text.toLowerCase();
   if (module.statusMap) {
@@ -300,6 +306,7 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
     const res = await safeRequest(url, {
       method: module.request.method,
       headers: module.request.headers,
+      body: fillBody(module.request.body, tn),
       maxRedirects: module.request.maxRedirections,
       timeoutMs: module.request.timeoutMs,
       maxBytes: module.request.maxBytes,
@@ -400,6 +407,7 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
     const res = await safeRequest(url, {
       method: module.request.method,
       headers: module.request.headers,
+      body: fillBody(module.request.body, tn),
       maxRedirects: module.request.maxRedirections,
       timeoutMs: module.request.timeoutMs,
       maxBytes: module.request.maxBytes,
@@ -430,6 +438,7 @@ async function trackJson(module: CarrierModule, tn: string): Promise<TrackingRes
   const res = await safeRequest(fillTemplate(module.request.url, tn), {
     method: module.request.method,
     headers: module.request.headers,
+    body: fillBody(module.request.body, tn),
     maxRedirects: module.request.maxRedirections,
     timeoutMs: module.request.timeoutMs,
     maxBytes: module.request.maxBytes,

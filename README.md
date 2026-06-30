@@ -1,7 +1,7 @@
 # SelfParcel
 
 Self-hosted package tracking for US carriers. Add tracking numbers and get one
-unified timeline across UPS, USPS, FedEx and SpeedPAK. Runs in Docker, keeps
+unified timeline across UPS, USPS, FedEx, SpeedPAK and 4PX. Runs in Docker, keeps
 everything in a local SQLite file, no third-party tracking service in the loop.
 
 ## How carriers work
@@ -15,7 +15,8 @@ Jan 2026.
 For **UPS and FedEx**, if you do have API keys you can use the official API
 instead: each user adds their own keys under **Settings → Carrier API keys**.
 A package then uses its owner's keys when present, and falls back to the scraper
-otherwise. USPS and SpeedPAK are scrape-only.
+otherwise. USPS and SpeedPAK are scrape-only. 4PX reads from its own public JSON
+tracking API (no key needed), so it isn't a page scrape at all.
 
 Scrapers are HTTP-first: a plain request first, then a **stealth-hardened**
 headless Chromium (Playwright + stealth, realistic fingerprint, a landing-page
@@ -227,8 +228,9 @@ manage who it's shared with.
 ## Provider modules
 
 Carriers are data-driven. UPS, FedEx, USPS, and SpeedPAK all ship as built-in
-declarative scraper modules (UPS and FedEx also have the optional official-API
-path described above). Admins manage everything from the Providers panel:
+declarative scraper modules, and 4PX ships as a built-in JSON-API module (UPS and
+FedEx also have the optional official-API path described above). Admins manage
+everything from the Providers panel:
 
 - Edit the selectors of any module (including the built-in scrapers) in the UI,
   test against a real tracking number, and reset a built-in to its default.
@@ -310,7 +312,7 @@ src/
     registry.ts         providers built from DB modules
     moduleSchema.ts     module schema + validator
     engine.ts           runs a module as a provider
-    modules/seeds.ts    built-in UPS/FedEx/USPS/SpeedPAK scraper modules
+    modules/seeds.ts    built-in UPS/FedEx/USPS/SpeedPAK scrapers + 4PX JSON API
     api/{ups,fedex}.ts  optional official-API providers (per-user keys)
     apiProviders.ts     API provider registry
     scraper/browser.ts  shared headless Chromium

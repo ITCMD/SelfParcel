@@ -1,7 +1,7 @@
 {
   "name": "selfparcel",
   "version": "0.1.0",
-  "description": "Self-hosted US package tracking (UPS, USPS, FedEx, SpeedPAK)",
+  "description": "Self-hosted US package tracking (UPS, USPS, FedEx, SpeedPAK, 4PX)",
   "type": "module",
   "engines": {
     "node": ">=20"
