@@ -146,6 +146,21 @@ export function migrate(): void {
       PRIMARY KEY (user_id, carrier)
     );
 
+    -- Per-user API keys for the REST API. Only a hash of the key is stored; the
+    -- plaintext is shown once at creation. user_id '' is the implicit single
+    -- user when auth is off.
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id           TEXT PRIMARY KEY,
+      user_id      TEXT NOT NULL DEFAULT '',
+      name         TEXT NOT NULL,
+      key_hash     TEXT NOT NULL UNIQUE,
+      prefix       TEXT NOT NULL,
+      last_used_at TEXT,
+      revoked_at   TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
     -- Declarative carrier provider modules. Carriers are modules (scrapers).
     CREATE TABLE IF NOT EXISTS carrier_modules (
       code         TEXT PRIMARY KEY,

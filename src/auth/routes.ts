@@ -8,7 +8,8 @@ import {
   UserNotAllowedError,
 } from './oidc.js';
 import { createSession, destroySession, getSession, type SessionUser } from './session.js';
-import { upsertOidcUser } from '../db/users.js';
+import { getUserById, upsertOidcUser } from '../db/users.js';
+import { resolveApiKey } from '../db/apiKeys.js';
 import { SESSION_COOKIE, cookieOpts, safeReturnTo } from './cookies.js';
 
 const FLOW_COOKIE = 'sp_oidc';
@@ -20,6 +21,37 @@ declare module 'fastify' {
   interface FastifyRequest {
     user: SessionUser | null;
   }
+}
+
+// Pull an API key from "Authorization: Bearer <key>" or "X-API-Key: <key>".
+function readApiKey(req: FastifyRequest): string | null {
+  const auth = req.headers['authorization'];
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  const h = req.headers['x-api-key'];
+  if (typeof h === 'string' && h.trim()) return h.trim();
+  return null;
+}
+
+// Resolve an API key to the same SessionUser shape the cookie path produces, so
+// downstream handlers don't care how the request authenticated. A key acts as
+// its owning user. Returns null for unknown/revoked keys or disabled users.
+function userFromApiKey(key: string): SessionUser | null {
+  const userId = resolveApiKey(key);
+  if (userId === null) return null;
+  if (userId === '') {
+    // Auth-off instances have no user rows; the implicit single user.
+    return { id: '', sub: 'local', email: null, name: null, username: null, role: 'user' };
+  }
+  const u = getUserById(userId);
+  if (!u || u.disabled) return null;
+  return {
+    id: u.id,
+    sub: u.oidc_sub ?? u.id,
+    email: u.email,
+    name: u.name,
+    username: u.username,
+    role: u.role,
+  };
 }
 
 function callbackUrl(req: FastifyRequest): string {
@@ -41,6 +73,12 @@ export function registerAuthGuard(app: FastifyInstance): void {
     const unsigned = req.unsignCookie(req.cookies[SESSION_COOKIE] ?? '');
     const session = unsigned.valid ? getSession(unsigned.value) : null;
     req.user = session?.user ?? null;
+
+    // Fall back to an API key (REST clients) when there's no session cookie.
+    if (!req.user) {
+      const key = readApiKey(req);
+      if (key) req.user = userFromApiKey(key);
+    }
 
     if (config.auth.mode === 'none') return;
     const path = req.url.split('?')[0];

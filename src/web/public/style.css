@@ -998,6 +998,32 @@ select:focus {
   color: var(--accent);
 }
 
+/* one-time API key reveal */
+.apikey-new {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+}
+.apikey-reveal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.apikey-reveal code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
 /* install / enable-notifications banner */
 .install-banner {
   width: calc(100% - 36px);

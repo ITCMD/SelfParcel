@@ -325,7 +325,76 @@ src/
 Every carrier is a declarative module run by the engine, which implements
 `CarrierProvider.track()` and returns a normalized `TrackingResult`.
 
+## REST API
+
+A small token-authenticated API for adding and reading your packages from
+scripts and home automation. Generate a key under **Settings → REST API keys** —
+it's shown **once**, so copy it then. Send it on every request as a Bearer token
+(or an `X-API-Key` header):
+
+```
+Authorization: Bearer sp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+A key acts as your user and sees only your packages (when `AUTH_MODE=none` there
+is a single shared user). Keep it secret; revoke it anytime from Settings.
+
+### Add a package
+
+```bash
+curl -X POST https://your-host/api/v1/packages \
+  -H "Authorization: Bearer $SP_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"trackingNumber": "1Z999AA10123456784", "name": "Headphones"}'
+```
+
+- `trackingNumber` — required.
+- `carrier` — optional; auto-detected when omitted. Pass it if detection fails.
+  Codes: `ups`, `usps`, `fedex`, `speedpak`, `fourpx`.
+- `name` — optional label.
+
+The call refreshes the package once before responding, so the result already
+carries a real status (this can take a few seconds).
+
+### List / read
+
+```bash
+curl https://your-host/api/v1/packages          -H "Authorization: Bearer $SP_KEY"
+curl https://your-host/api/v1/packages/123       -H "Authorization: Bearer $SP_KEY"
+```
+
+Add `?archived=1` to include archived packages in the list.
+
+### Response shape
+
+Every package is returned as:
+
+```json
+{
+  "id": 123,
+  "name": "Headphones",
+  "trackingNumber": "1Z999AA10123456784",
+  "carrier": "ups",
+  "carrierName": "UPS",
+  "status": "in_transit",
+  "estimatedDelivery": "2026-07-02",
+  "lastRefreshed": "2026-06-30 16:20:22"
+}
+```
+
+`status` is one of `pre_transit`, `in_transit`, `out_for_delivery`, `delivered`,
+`exception`, `unknown`. `lastRefreshed` is when SelfParcel last polled the carrier
+(`null` until the first refresh). The collection endpoint wraps these in
+`{ "packages": [ ... ] }` and the single endpoint in `{ "package": { ... } }`.
+
+Note: a key carries the same access as the user who created it (an admin's key
+can reach admin endpoints). Create keys from a non-admin account if you want to
+limit blast radius.
+
 ## API
+
+The full endpoint set the web UI uses (session cookie auth; the `/api/v1/*` and
+`/api/me/api-keys` rows above also accept an API key):
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -342,6 +411,10 @@ Every carrier is a declarative module run by the engine, which implements
 | GET/POST/DELETE | `/api/packages/:id/shares[/:userId]` | manage who a package is shared with (owner) |
 | POST | `/api/packages/:id/leave` | recipient removes a shared package |
 | GET | `/api/share/candidates?q=` | users to share with, recent first |
+| POST | `/api/v1/packages` | REST: add `{trackingNumber, carrier?, name?}` |
+| GET | `/api/v1/packages?archived=0\|1` | REST: list your packages |
+| GET | `/api/v1/packages/:id` | REST: one package |
+| GET/POST/DELETE | `/api/me/api-keys[/:id]` | your REST API keys (list/create/revoke) |
 | GET | `/auth/me` | session `{mode, authenticated, user, isAdmin}` |
 | GET/PUT/DELETE | `/api/me/credentials[/:carrier]` | your own UPS/FedEx API keys |
 | GET/PUT | `/api/me/notify` | your channels + trigger |

@@ -230,6 +230,26 @@
         </div>
         <div id="channel-form" class="channel-form hidden"></div>
         <p class="hint" id="notify-msg"></p>
+
+        <div class="log-head">REST API keys</div>
+        <p class="hint">
+          Use a key to add and read packages from scripts:
+          <code>Authorization: Bearer &lt;key&gt;</code> against <code>/api/v1/packages</code>.
+          A key is shown only once.
+        </p>
+        <div id="apikeys-list" class="channel-list"></div>
+        <div class="add-channel">
+          <input id="apikey-name" placeholder="Key name (e.g. Home Assistant)" autocomplete="off" />
+          <button id="apikey-create" class="btn">Create key</button>
+        </div>
+        <div id="apikey-new" class="apikey-new hidden">
+          <span class="cf-hint">Copy this now — it won’t be shown again:</span>
+          <div class="apikey-reveal">
+            <code id="apikey-value" class="mono"></code>
+            <button id="apikey-copy" class="btn small">Copy</button>
+          </div>
+        </div>
+        <p class="hint" id="apikey-msg"></p>
       </div>
     </div>
 

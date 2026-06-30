@@ -28,6 +28,7 @@ import {
   listUserCredentialCarriers,
   setUserCredentials,
 } from '../db/credentials.js';
+import { generateApiKey, listApiKeys, revokeApiKey } from '../db/apiKeys.js';
 
 // Per-user notification settings and carrier API keys.
 
@@ -230,6 +231,25 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { endpoint?: string } }>('/api/push/unsubscribe', async (req, reply) => {
     if (!req.body?.endpoint) return reply.code(400).send({ error: 'endpoint required' });
     removePushSub(req.body.endpoint);
+    return { ok: true };
+  });
+
+  // ── REST API keys (per user) ────────────────────────────────────────────────
+  // Keys authenticate the public /api/v1 endpoints. The plaintext is only ever
+  // returned once, at creation.
+  app.get('/api/me/api-keys', async (req) => ({ keys: listApiKeys(notifyUserId(req)) }));
+
+  app.post<{ Body: { name?: string } }>('/api/me/api-keys', async (req, reply) => {
+    const name = (req.body?.name ?? '').trim();
+    if (!name) return reply.code(400).send({ error: 'name is required' });
+    if (name.length > 60) return reply.code(400).send({ error: 'name is too long' });
+    return reply.code(201).send({ key: generateApiKey(notifyUserId(req), name) });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/me/api-keys/:id', async (req, reply) => {
+    if (!revokeApiKey(notifyUserId(req), req.params.id)) {
+      return reply.code(404).send({ error: 'Not found' });
+    }
     return { ok: true };
   });
 }

@@ -697,6 +697,84 @@ $('#open-settings').addEventListener('click', async () => {
   $('#notify-msg').textContent = '';
   await loadCredentials();
   await loadNotify();
+  await loadApiKeys();
+});
+
+// ── REST API keys ───────────────────────────────────────────────────────────
+async function loadApiKeys() {
+  const { keys } = await api('/api/me/api-keys');
+  const list = $('#apikeys-list');
+  if (!keys.length) {
+    list.innerHTML = '<p class="hint">No API keys yet.</p>';
+    return;
+  }
+  list.innerHTML = keys
+    .map((k) => {
+      const used = k.lastUsedAt ? `last used ${timeAgo(k.lastUsedAt)}` : 'never used';
+      return `<div class="channel-row" data-id="${k.id}">
+        <span class="ch-main">
+          <span class="ch-name">${escapeHtml(k.name)}</span>
+          <span class="ch-sum mono">${escapeHtml(k.prefix)}… · ${used}</span>
+        </span>
+        <span class="ch-actions">
+          <button class="btn small danger" data-keyact="revoke" data-id="${k.id}">Revoke</button>
+        </span>
+      </div>`;
+    })
+    .join('');
+}
+
+$('#apikey-create').addEventListener('click', async () => {
+  const input = $('#apikey-name');
+  const name = input.value.trim();
+  const msg = $('#apikey-msg');
+  if (!name) {
+    msg.textContent = 'Give the key a name first.';
+    msg.className = 'hint err-line';
+    return;
+  }
+  $('#apikey-create').disabled = true;
+  try {
+    const { key } = await api('/api/me/api-keys', { method: 'POST', body: JSON.stringify({ name }) });
+    input.value = '';
+    msg.textContent = '';
+    msg.className = 'hint';
+    $('#apikey-value').textContent = key.key;
+    $('#apikey-new').classList.remove('hidden');
+    await loadApiKeys();
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.className = 'hint err-line';
+  } finally {
+    $('#apikey-create').disabled = false;
+  }
+});
+
+$('#apikey-copy').addEventListener('click', async () => {
+  const value = $('#apikey-value').textContent;
+  try {
+    await navigator.clipboard.writeText(value);
+    $('#apikey-copy').textContent = 'Copied';
+    setTimeout(() => ($('#apikey-copy').textContent = 'Copy'), 1500);
+  } catch {
+    /* clipboard blocked; the value is visible to select manually */
+  }
+});
+
+$('#apikeys-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-keyact="revoke"]');
+  if (!btn) return;
+  if (!confirm('Revoke this API key? Apps using it will stop working.')) return;
+  btn.disabled = true;
+  try {
+    await api(`/api/me/api-keys/${btn.dataset.id}`, { method: 'DELETE' });
+    $('#apikey-new').classList.add('hidden');
+    await loadApiKeys();
+  } catch (err) {
+    $('#apikey-msg').textContent = err.message;
+    $('#apikey-msg').className = 'hint err-line';
+    btn.disabled = false;
+  }
 });
 $('#settings-close').addEventListener('click', () => $('#settings-modal').classList.add('hidden'));
 $('#settings-modal').addEventListener('click', (e) => {
