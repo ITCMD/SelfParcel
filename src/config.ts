@@ -122,6 +122,13 @@ export const config = {
     },
   },
 
+  sharing: {
+    // When false (default), the share picker only suggests people you've shared
+    // with before; to reach anyone else you type their full email. When true, it
+    // suggests any user account (easier, but exposes who has an account).
+    easyDiscovery: bool('EASY_DISCOVERABILITY', false),
+  },
+
   auth: {
     // 'none' (wide open), 'local' (username/password), or 'oidc' (SSO).
     // `enabled` stays derived so the OIDC code path is untouched.

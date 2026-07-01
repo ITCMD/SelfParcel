@@ -9,7 +9,7 @@ import {
 } from '../carriers/registry.js';
 import { detectCarrier, normalizeTrackingNumber } from '../carriers/detect.js';
 import { refreshById } from '../services/tracking.js';
-import { getUserById } from '../db/users.js';
+import { getUserByEmail, getUserById } from '../db/users.js';
 import { hasApiProvider } from '../carriers/apiProviders.js';
 import { listUserCredentialCarriers } from '../db/credentials.js';
 import {
@@ -182,7 +182,12 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   // Users to share with, recently-shared first.
   app.get<{ Querystring: { q?: string } }>('/api/share/candidates', async (req, reply) => {
     if (!req.user) return reply.code(400).send({ error: 'Sign in to share' });
-    return { users: shareCandidates(req.user.id, (req.query.q ?? '').trim()) };
+    const users = shareCandidates(
+      req.user.id,
+      (req.query.q ?? '').trim(),
+      !config.sharing.easyDiscovery,
+    );
+    return { users, easyDiscovery: config.sharing.easyDiscovery };
   });
 
   app.get<{ Params: { id: string } }>(
@@ -194,15 +199,26 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.post<{ Params: { id: string }; Body: { userId?: string } }>(
+  app.post<{ Params: { id: string }; Body: { userId?: string; email?: string } }>(
     '/api/packages/:id/shares',
     async (req, reply) => {
       if (!req.user) return reply.code(400).send({ error: 'Sign in to share' });
       const pkg = managedPackage(req, Number(req.params.id));
       if (!pkg) return reply.code(404).send({ error: 'Not found' });
-      const target = (req.body?.userId ?? '').trim();
-      const user = target ? getUserById(target) : undefined;
-      if (!user) return reply.code(404).send({ error: 'User not found' });
+      // Add by an exact email (works even when discoverability is off) or by the
+      // user id of a suggestion.
+      const email = (req.body?.email ?? '').trim();
+      const userId = (req.body?.userId ?? '').trim();
+      const user = email
+        ? getUserByEmail(email)
+        : userId
+          ? getUserById(userId)
+          : undefined;
+      if (!user || user.disabled) {
+        return reply
+          .code(404)
+          .send({ error: email ? 'No account with that email' : 'User not found' });
+      }
       if (user.id === pkg.owner_user_id) {
         return reply.code(400).send({ error: 'You already own this package' });
       }

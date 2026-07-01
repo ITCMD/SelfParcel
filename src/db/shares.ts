@@ -5,12 +5,14 @@ import { db } from './index.js';
 export interface ShareUser {
   userId: string;
   username: string | null;
+  email: string | null;
+  name: string | null;
 }
 
 export function listShares(packageId: number): ShareUser[] {
   return db
     .prepare(
-      `SELECT s.user_id AS userId, u.username AS username
+      `SELECT s.user_id AS userId, u.username AS username, u.email AS email, u.name AS name
        FROM package_shares s
        LEFT JOIN users u ON u.id = s.user_id
        WHERE s.package_id = ?
@@ -49,19 +51,30 @@ export function removeShare(packageId: number, userId: string): void {
   );
 }
 
+export interface ShareCandidate {
+  id: string;
+  username: string | null;
+  email: string | null;
+  name: string | null;
+  lastShared: string | null;
+}
+
 /**
- * Users the owner can share with, most-recently-shared first. Excludes the
- * owner and disabled accounts; optional name filter.
+ * Users the owner can share with, most-recently-shared first. Excludes the owner
+ * and disabled accounts; optional name/email filter. When `onlyShared` is true
+ * (discoverability off), the list is limited to people the owner has shared with
+ * before — anyone else must be reached by typing their exact email.
  */
 export function shareCandidates(
   ownerId: string,
   q = '',
+  onlyShared = false,
   limit = 20,
-): { id: string; username: string | null; lastShared: string | null }[] {
+): ShareCandidate[] {
   const like = `%${q.toLowerCase()}%`;
   return db
     .prepare(
-      `SELECT u.id AS id, u.username AS username,
+      `SELECT u.id AS id, u.username AS username, u.email AS email, u.name AS name,
               (SELECT MAX(s.created_at)
                  FROM package_shares s
                  JOIN packages p ON p.id = s.package_id
@@ -69,13 +82,20 @@ export function shareCandidates(
        FROM users u
        WHERE u.id != @owner AND u.disabled = 0
          AND (@q = '' OR LOWER(COALESCE(u.username, '')) LIKE @like
-              OR LOWER(COALESCE(u.email, '')) LIKE @like)
+              OR LOWER(COALESCE(u.email, '')) LIKE @like
+              OR LOWER(COALESCE(u.name, '')) LIKE @like)
+         AND (@onlyShared = 0 OR EXISTS (
+               SELECT 1 FROM package_shares s
+                 JOIN packages p ON p.id = s.package_id
+                WHERE p.owner_user_id = @owner AND s.user_id = u.id))
        ORDER BY lastShared DESC, u.username ASC
        LIMIT @limit`,
     )
-    .all({ owner: ownerId, q: q.toLowerCase(), like, limit }) as {
-    id: string;
-    username: string | null;
-    lastShared: string | null;
-  }[];
+    .all({
+      owner: ownerId,
+      q: q.toLowerCase(),
+      like,
+      onlyShared: onlyShared ? 1 : 0,
+      limit,
+    }) as ShareCandidate[];
 }

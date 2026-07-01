@@ -358,28 +358,47 @@ async function openShare(id, label) {
   await loadSuggestions('');
 }
 
+// Prefer a human-friendly label; never fall back to the raw user id (a UUID).
+function shareLabel(u) {
+  return u.email || u.username || u.name || 'unknown user';
+}
+
 async function refreshShareChips() {
   const { shares } = await api(`/api/packages/${shareState.id}/shares`);
   shareState.shared = new Set(shares.map((s) => s.userId));
+  shareState.sharedEmails = new Set(
+    shares.map((s) => (s.email || '').toLowerCase()).filter(Boolean),
+  );
   $('#share-current').innerHTML = shares
     .map(
       (s) =>
-        `<span class="share-chip">${escapeHtml(s.username || s.userId)}<button data-unshare="${s.userId}" title="Remove">×</button></span>`,
+        `<span class="share-chip">${escapeHtml(shareLabel(s))}<button data-unshare="${s.userId}" title="Remove">×</button></span>`,
     )
     .join('');
 }
 
+const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
 async function loadSuggestions(q) {
   const { users } = await api(`/api/share/candidates?q=${encodeURIComponent(q)}`);
   const rows = users.filter((u) => !shareState.shared.has(u.id));
-  $('#share-suggest').innerHTML = rows.length
-    ? rows
-        .map(
-          (u) =>
-            `<div class="suggest-row" data-share="${u.id}"><span>${escapeHtml(u.username || u.id)}</span>${u.lastShared ? '<span class="recent">recent</span>' : ''}</div>`,
-        )
-        .join('')
-    : '<p class="hint">No matching users.</p>';
+  const items = rows.map(
+    (u) =>
+      `<div class="suggest-row" data-share="${u.id}"><span>${escapeHtml(shareLabel(u))}</span>${u.lastShared ? '<span class="recent">recent</span>' : ''}</div>`,
+  );
+  // Offer an explicit "share with this email" action when the query is a full
+  // email that isn't already a suggestion or an existing share. This is the way
+  // to reach a new person when discoverability is off.
+  const email = q.trim().toLowerCase();
+  const listed = rows.some((u) => (u.email || '').toLowerCase() === email);
+  if (isEmail(email) && !listed && !shareState.sharedEmails?.has(email)) {
+    items.push(
+      `<div class="suggest-row" data-share-email="${escapeHtml(email)}"><span>Share with ${escapeHtml(email)}</span><span class="recent">email</span></div>`,
+    );
+  }
+  $('#share-suggest').innerHTML = items.length
+    ? items.join('')
+    : '<p class="hint">No matches. Type a full email address to share.</p>';
 }
 
 let shareSearchTimer;
@@ -390,15 +409,20 @@ $('#share-search').addEventListener('input', (e) => {
 });
 
 $('#share-suggest').addEventListener('click', async (e) => {
-  const row = e.target.closest('[data-share]');
+  const row = e.target.closest('[data-share], [data-share-email]');
   if (!row) return;
+  const payload = row.dataset.shareEmail
+    ? { email: row.dataset.shareEmail }
+    : { userId: row.dataset.share };
   try {
     await api(`/api/packages/${shareState.id}/shares`, {
       method: 'POST',
-      body: JSON.stringify({ userId: row.dataset.share }),
+      body: JSON.stringify(payload),
     });
+    $('#share-search').value = '';
+    $('#share-msg').textContent = '';
     await refreshShareChips();
-    await loadSuggestions($('#share-search').value.trim());
+    await loadSuggestions('');
     loadPackages();
   } catch (err) {
     $('#share-msg').textContent = err.message;
@@ -935,6 +959,12 @@ function isStandalone() {
 function isIos() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 }
+// The install nudge is for phones (where push needs an installed PWA). On
+// desktop the browser still offers install via the address-bar icon, so we
+// don't nag with a banner.
+function isTouch() {
+  return window.matchMedia('(pointer: coarse)').matches;
+}
 function pushSupported() {
   return 'serviceWorker' in navigator && 'PushManager' in window;
 }
@@ -995,7 +1025,7 @@ function refreshInstallBanner() {
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  if (isStandalone()) return;
+  if (isStandalone() || !isTouch()) return;
   showInstallBanner({
     title: 'Install SelfParcel',
     text: 'Add it to your device for quick access and notifications.',

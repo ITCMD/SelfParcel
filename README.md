@@ -292,8 +292,8 @@ All via environment variables; see [`.env.example`](.env.example).
 | `AUTH_MODE` | `none` | `none`, `local`, or `oidc` |
 | `SESSION_SECRET` | | signs session cookies; required for local/oidc |
 | `OIDC_*` | | OIDC provider config |
+| `EASY_DISCOVERABILITY` | `false` | suggest any user when sharing; off = only prior shares, else type a full email |
 | `NOTIFY_TRIGGER` | `status_change` | default notify trigger (overridable in UI) |
-| `NOTIFY_TRIGGER` | `status_change` | default trigger for new users |
 | `SMTP_*` (relay), `APPRISE_API_URL`, `VAPID_*` | | notification infrastructure (targets are per-user) |
 | `APP_BASE_URL` | | public URL, used for notification links |
 

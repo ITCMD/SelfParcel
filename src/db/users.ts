@@ -43,6 +43,12 @@ export function getUserByUsername(username: string): UserRow | undefined {
     .get(username) as UserRow | undefined;
 }
 
+export function getUserByEmail(email: string): UserRow | undefined {
+  return db
+    .prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE')
+    .get(email) as UserRow | undefined;
+}
+
 export function getUserByOidcSub(sub: string): UserRow | undefined {
   return db.prepare('SELECT * FROM users WHERE oidc_sub = ?').get(sub) as
     | UserRow
