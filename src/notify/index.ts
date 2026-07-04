@@ -125,38 +125,70 @@ const STATUS_TAGS: Record<TrackStatus, string[]> = {
 /** Decide whether a refresh outcome warrants a notification. */
 export function shouldNotify(
   mode: TriggerMode,
-  opts: { statusChanged: boolean; newStatus: TrackStatus; newEvents: number },
+  opts: { statusChanged: boolean; newStatus: TrackStatus; newEvents: number; etaChanged?: boolean },
 ): boolean {
-  if (opts.newEvents === 0 && !opts.statusChanged) return false;
+  const etaChanged = opts.etaChanged ?? false;
+  if (opts.newEvents === 0 && !opts.statusChanged && !etaChanged) return false;
   switch (mode) {
     case 'every_event':
-      return opts.newEvents > 0 || opts.statusChanged;
+      return opts.newEvents > 0 || opts.statusChanged || etaChanged;
     case 'delivered_exceptions':
+      // Deliberately minimal: only final/problem states, not date shuffles.
       return (
         opts.statusChanged &&
         (opts.newStatus === 'delivered' || opts.newStatus === 'exception')
       );
     case 'status_change':
     default:
-      return opts.statusChanged;
+      return opts.statusChanged || etaChanged;
   }
+}
+
+// Friendly arrival label from a delivery date: the weekday alone within a week
+// ("Tuesday"), otherwise weekday + date ("Tue, Jul 15"). Parses a YYYY-MM-DD as a
+// local date so the weekday never slips a day across timezones.
+function arrivalLabel(eta: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(eta);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(eta);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  return days >= 0 && days <= 6
+    ? d.toLocaleDateString('en-US', { weekday: 'long' })
+    : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 /** Build the notification for a package whose tracking just advanced. */
 export function buildMessage(
   pkg: PackageRow,
   newStatus: TrackStatus,
-  latestEvent?: { description: string; location?: string | null },
+  opts: {
+    latestEvent?: { description: string; location?: string | null };
+    statusChanged?: boolean;
+    /** New estimated delivery, set only when the delivery day just changed. */
+    newEta?: string | null;
+  } = {},
 ): NotificationMessage {
   const name = pkg.label || pkg.tracking_number;
   const carrier = carrierName(pkg.carrier);
   const statusText = STATUS_TEXT[newStatus] ?? 'Update';
+  const arrival = opts.newEta ? arrivalLabel(opts.newEta) : null;
 
-  const lines = [latestEvent?.description, latestEvent?.location].filter(Boolean);
-  const body = lines.length ? lines.join(' - ') : `${carrier} · ${pkg.tracking_number}`;
+  const eventLine = [opts.latestEvent?.description, opts.latestEvent?.location]
+    .filter(Boolean)
+    .join(' - ');
+  const base = eventLine || `${carrier} · ${pkg.tracking_number}`;
+
+  // Lead with the new arrival day when that's the news (delivery date moved but
+  // the status didn't advance); otherwise headline the status and fold the new
+  // arrival into the body.
+  const etaLed = Boolean(arrival) && !opts.statusChanged;
+  const title = etaLed ? `${name} - Now arriving ${arrival}` : `${name} - ${statusText}`;
+  const body = !etaLed && arrival ? `Now arriving ${arrival} · ${base}` : base;
 
   return {
-    title: `${name} - ${statusText}`,
+    title,
     body,
     status: newStatus,
     tags: STATUS_TAGS[newStatus],

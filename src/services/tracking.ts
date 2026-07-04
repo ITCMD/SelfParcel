@@ -34,6 +34,7 @@ export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
         ? await getApiProvider(pkg.carrier)!.track(pkg.tracking_number, creds)
         : await getProvider(pkg.carrier).track(pkg.tracking_number);
     const previousStatus = pkg.status;
+    const previousEta = pkg.est_delivery;
     const isFirstFetch = pkg.last_checked_at === null;
     const { newEvents } = repo.applyResult(pkg.id, result);
 
@@ -43,6 +44,10 @@ export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
       newEvents,
       isFirstFetch,
       latestEvent: result.events[0],
+      // Fire a "now arriving …" notice when the delivery day moves off a known
+      // previous date (not the first time we learn one).
+      etaChanged: !isFirstFetch && etaDayChanged(previousEta, result.estimatedDelivery ?? null),
+      newEta: result.estimatedDelivery ?? null,
     });
 
     return { ok: true, newEvents, status: result.status, notified };
@@ -67,6 +72,16 @@ export async function refreshPackage(pkg: PackageRow): Promise<RefreshOutcome> {
   }
 }
 
+// Compare two delivery dates by calendar day (values may be "YYYY-MM-DD" or a
+// full ISO string). True only when a known previous day changes to a different
+// known day.
+function etaDayChanged(prev: string | null, next: string | null): boolean {
+  const day = (v: string | null) => (v ? /^(\d{4}-\d{2}-\d{2})/.exec(v)?.[1] ?? v : null);
+  const p = day(prev);
+  const n = day(next);
+  return Boolean(p && n && p !== n);
+}
+
 async function maybeNotify(
   pkg: PackageRow,
   ctx: {
@@ -75,6 +90,8 @@ async function maybeNotify(
     newEvents: number;
     isFirstFetch: boolean;
     latestEvent?: { description: string; location?: string };
+    etaChanged: boolean;
+    newEta: string | null;
   },
 ): Promise<boolean> {
   if (pkg.notify === 0) return false; // muted for this package
@@ -85,7 +102,11 @@ async function maybeNotify(
   const recipients = new Set<string>([pkg.owner_user_id]);
   for (const s of listShares(pkg.id)) recipients.add(s.userId);
 
-  const msg = buildMessage(pkg, ctx.newStatus, ctx.latestEvent);
+  const msg = buildMessage(pkg, ctx.newStatus, {
+    latestEvent: ctx.latestEvent,
+    statusChanged: ctx.statusChanged,
+    newEta: ctx.etaChanged ? ctx.newEta : null,
+  });
   let notified = false;
 
   for (const userId of recipients) {
@@ -93,6 +114,7 @@ async function maybeNotify(
       statusChanged: ctx.statusChanged,
       newStatus: ctx.newStatus,
       newEvents: ctx.newEvents,
+      etaChanged: ctx.etaChanged,
     });
     if (!wanted) continue;
     await dispatch(msg, userId);
