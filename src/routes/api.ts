@@ -177,7 +177,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  // ── Sharing ────────────────────────────────────────────────────────────────
+  // Sharing
 
   // Users to share with, recently-shared first.
   app.get<{ Querystring: { q?: string } }>('/api/share/candidates', async (req, reply) => {

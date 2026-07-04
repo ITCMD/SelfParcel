@@ -62,6 +62,12 @@ export interface BrowserApiSpec {
   fields: FieldMap;
   statusPath?: string;
   estimatedDeliveryPath?: string;
+  /**
+   * Build the ETA from a `{dotted.path}` template resolved against the response,
+   * then date-parse it (year inferred if absent). Use when the delivery date is
+   * split across fields or lacks a year, e.g. UPS's month-key + day-number.
+   */
+  estimatedDeliveryText?: string;
 }
 
 export interface ScraperSpec {
@@ -247,7 +253,7 @@ export function validateModule(
         checkUrlTemplate(ba?.url, errors, 'scraper.browserApi.url');
         if (!isStr(ba?.eventsPath)) errors.push('scraper.browserApi.eventsPath is required');
         checkFields(ba?.fields, errors, 'scraper.browserApi.fields');
-        for (const key of ['body', 'method', 'contentType', 'tokenCookie', 'tokenHeader']) {
+        for (const key of ['body', 'method', 'contentType', 'tokenCookie', 'tokenHeader', 'estimatedDeliveryText']) {
           if (ba?.[key] !== undefined && typeof ba[key] !== 'string') {
             errors.push(`scraper.browserApi.${key} must be a string`);
           }

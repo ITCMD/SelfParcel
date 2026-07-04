@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { db } from './index.js';
 
 // Per-user API keys for the REST API. We store only a SHA-256 hash of the key
-// (the key is high-entropy random, so a fast hash is enough — no slow KDF
+// (the key is high-entropy random, so a fast hash is enough - no slow KDF
 // needed). The plaintext is returned once, at creation, and never again.
 
 const KEY_PREFIX = 'sp_';
@@ -49,7 +49,7 @@ export function generateApiKey(userId: string, name: string): ApiKeyInfo & { key
   const secret = randomBytes(24).toString('base64url'); // 32 url-safe chars
   const key = `${KEY_PREFIX}${secret}`;
   const id = randomUUID();
-  const prefix = key.slice(0, 11); // e.g. "sp_AbC123de" — safe to display
+  const prefix = key.slice(0, 11); // e.g. "sp_AbC123de" - safe to display
   db.prepare(
     `INSERT INTO api_keys (id, user_id, name, key_hash, prefix)
      VALUES (@id, @user_id, @name, @key_hash, @prefix)`,

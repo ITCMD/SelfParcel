@@ -12,7 +12,7 @@ import type { FastifyBaseLogger } from 'fastify';
 // The poller wakes up on this fixed short cadence; how often a given package is
 // actually refreshed is governed by the admin-configurable interval below (a
 // package is only "due" once it hasn't been checked for that long). Keeping the
-// tick short means a changed interval — and freshly added packages — get picked
+// tick short means a changed interval - and freshly added packages - get picked
 // up promptly without restarting the process.
 const TICK_MS = 60_000;
 

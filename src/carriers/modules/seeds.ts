@@ -114,21 +114,18 @@ const speedpak: CarrierModule = {
   },
 };
 
-// UPS's own tracking API can't be used with a self-hosted app (UPS rejects
-// developer-app registration for non-businesses), so we drive their public
-// website's JSON API instead. That API (webapis.ups.com/track) sits behind
-// Akamai and requires an anti-CSRF token echoed from a cookie, so we fetch it
-// from *inside* the stealth browser after warming up on the tracking page
-// (which earns the clearance + X-XSRF-TOKEN-ST cookie). Response is the same
-// JSON the ups.com SPA renders — far more stable than scraping its Angular DOM.
-// The rowSelector/fields below are a best-effort HTML fallback only.
+// UPS rejects developer-app registration for non-businesses, so instead of their
+// official API we drive the public site's own JSON API (webapis.ups.com/track).
+// It's behind Akamai and needs an anti-CSRF token echoed from a cookie, so we call
+// it from inside the stealth browser after a warmup that earns the clearance +
+// X-XSRF-TOKEN-ST cookie. The rowSelector/fields below are an HTML fallback only.
 const ups: CarrierModule = {
   schema: MODULE_SCHEMA,
   code: 'ups',
   name: 'UPS',
   kind: 'scraper',
-  // 1Z…, UPS freight (9 digits), UPS "T" numbers, and Mail Innovations (18-digit
-  // and the 26-digit USPS handoff number).
+  // 1Z..., UPS freight (9 digits), UPS "T" numbers, and Mail Innovations
+  // (18-digit and the 26-digit USPS handoff number).
   detect: [{ pattern: '^1Z[0-9A-Z]{16}$' }, { pattern: '^(T\\d{10}|\\d{9}|\\d{18}|\\d{26})$' }],
   request: {
     url: 'https://www.ups.com/track?loc=en_US&tracknum={tn}&requester=ST/trackdetails',
@@ -204,6 +201,10 @@ const ups: CarrierModule = {
         date: 'date',
         location: 'location',
       },
+      // ETA is split across a month CMS-key ("cms.stapp.jul") + day number, with
+      // no year. Join them; the engine reads the month name and infers the year.
+      estimatedDeliveryText:
+        '{trackDetails.0.scheduledDeliveryDateDetail.monthCMSKey} {trackDetails.0.scheduledDeliveryDateDetail.dayNum}',
     },
     // HTML fallback (only reached if the API path yields nothing). Scan history
     // lives in <ups-shipment-progress>, one event per .row.
@@ -249,7 +250,7 @@ const fedex: CarrierModule = {
 
 // 4PX exposes a public JSON tracking API (the one its own track.4px.com SPA
 // calls): POST listTrackV3 with a JSON body of query codes. No account, key, or
-// captcha needed, so this is a `json` module rather than a page scraper — the
+// captcha needed, so this is a `json` module rather than a page scraper - the
 // SPA itself is JS-only and not worth rendering. A query code can be either the
 // "4PX...CN" shipper number or the "SPXOR..." server number; both resolve here.
 // Events come back newest-first under data[0].tracks, with ISO-8601 tkDate.
@@ -329,7 +330,7 @@ const fourpx: CarrierModule = {
 };
 
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
-  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '3', module: ups },
+  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '4', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
   { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '7', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },

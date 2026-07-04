@@ -158,10 +158,10 @@ async function loadPackages() {
         ? `${checked} · <span class="err">⚠ ${escapeHtml(p.last_error)}</span>`
         : `${checked} · ${p.eventCount} events`;
 
-      // Headline ETA next to the name, e.g. "Battery — Wednesday".
+      // Headline ETA next to the name, e.g. "Battery - Wednesday".
       const etaTag =
         p.est_delivery && status !== 'delivered'
-          ? `<span class="pkg-eta">— ${escapeHtml(etaShort(p.est_delivery))}</span>`
+          ? `<span class="pkg-eta">- ${escapeHtml(etaShort(p.est_delivery))}</span>`
           : '';
       const name = p.label ? escapeHtml(p.label) : escapeHtml(p.tracking_number);
       const title = `<div class="pkg-title${p.label ? '' : ' is-tn'}">${name}${etaTag}</div>`;
@@ -212,7 +212,7 @@ async function openDetail(id) {
   const { package: p, events } = await api(`/api/packages/${id}`);
   const etaHead =
     p.est_delivery && p.status !== 'delivered'
-      ? ` <span class="eta-head" title="Estimated delivery ${escapeHtml(fmtEta(p.est_delivery))}">— ${escapeHtml(etaShort(p.est_delivery))}</span>`
+      ? ` <span class="eta-head" title="Estimated delivery ${escapeHtml(fmtEta(p.est_delivery))}">- ${escapeHtml(etaShort(p.est_delivery))}</span>`
       : '';
   const openBtn = p.trackingUrl
     ? `<a class="tn-open" href="${escapeHtml(p.trackingUrl)}" target="_blank" rel="noopener noreferrer" title="Open in ${escapeHtml(p.carrierName)} tracking" aria-label="Open in carrier tracking">↗</a>`
@@ -345,7 +345,7 @@ $('#package-list').addEventListener('contextmenu', (e) => {
   openShare(card.dataset.id, card.dataset.label);
 });
 
-// ── Sharing ───────────────────────────────────────────────────────────────────
+// Sharing
 const shareState = { id: null, shared: new Set() };
 
 async function openShare(id, label) {
@@ -484,7 +484,7 @@ async function loadNotify() {
   $('#trigger-mode').value = data.trigger;
 
   $('#channel-type').innerHTML = NOTIFY_TYPES.map(
-    (t) => `<option value="${t.type}"${t.available ? '' : ' disabled'}>${escapeHtml(t.name)}${t.available ? '' : ' — server email not set up'}</option>`,
+    (t) => `<option value="${t.type}"${t.available ? '' : ' disabled'}>${escapeHtml(t.name)}${t.available ? '' : ' - server email not set up'}</option>`,
   ).join('');
 
   renderChannels();
@@ -504,7 +504,7 @@ function channelSummary(ch) {
 function renderChannels() {
   const list = $('#channels-list');
   if (!NOTIFY_CHANNELS.length) {
-    list.innerHTML = '<p class="hint">No channels yet — add one below.</p>';
+    list.innerHTML = '<p class="hint">No channels yet - add one below.</p>';
     return;
   }
   list.innerHTML = NOTIFY_CHANNELS.map((ch) => {
@@ -724,7 +724,7 @@ $('#open-settings').addEventListener('click', async () => {
   await loadApiKeys();
 });
 
-// ── REST API keys ───────────────────────────────────────────────────────────
+// REST API keys
 async function loadApiKeys() {
   const { keys } = await api('/api/me/api-keys');
   const list = $('#apikeys-list');
@@ -942,7 +942,7 @@ function registerServiceWorker() {
   }
 }
 
-// ── Install / enable-notifications nudge ────────────────────────────────────
+// Install / enable-notifications nudge
 // Web Push only works on iOS once the app is on the Home Screen, and is easy to
 // miss on Android/desktop too. This surfaces a small, dismissible banner: an
 // install prompt where the browser offers one, Add-to-Home-Screen steps on iOS,

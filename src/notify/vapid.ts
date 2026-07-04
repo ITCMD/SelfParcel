@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { getSetting, setSetting } from '../db/settings.js';
 
 // VAPID keypair resolution for Web Push. Order of precedence:
-//   1. Env vars (VAPID_PUBLIC_KEY/PRIVATE_KEY) — explicit admin override.
+//   1. Env vars (VAPID_PUBLIC_KEY/PRIVATE_KEY) - explicit admin override.
 //   2. Keys previously generated and persisted in the settings table.
 //   3. Generate a fresh keypair and persist it.
 // Because the DB lives on the mounted data volume, auto-generated keys survive

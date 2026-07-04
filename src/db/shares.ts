@@ -63,7 +63,7 @@ export interface ShareCandidate {
  * Users the owner can share with, most-recently-shared first. Excludes the owner
  * and disabled accounts; optional name/email filter. When `onlyShared` is true
  * (discoverability off), the list is limited to people the owner has shared with
- * before — anyone else must be reached by typing their exact email.
+ * before - anyone else must be reached by typing their exact email.
  */
 export function shareCandidates(
   ownerId: string,

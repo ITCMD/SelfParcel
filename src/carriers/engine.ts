@@ -64,7 +64,7 @@ function parseEstimatedDelivery(raw: string): string | null {
   let m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(text);
   if (m) return `${m[3]}-${pad(MONTH_NUM[m[1].toLowerCase()])}-${pad(Number(m[2]))}`;
 
-  // "24 June 2026" / "24th June 2026" (day first — USPS renders it this way)
+  // "24 June 2026" / "24th June 2026" (day first - USPS renders it this way)
   m = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b/i.exec(text);
   if (m) return `${m[3]}-${pad(MONTH_NUM[m[2].toLowerCase()])}-${pad(Number(m[1]))}`;
 
@@ -79,6 +79,64 @@ function parseEstimatedDelivery(raw: string): string | null {
   m = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(text);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
+  return null;
+}
+
+// Pick the calendar year that puts a month/day nearest to now (ETAs are within a
+// few weeks either side). Used when a carrier quotes a delivery date with no year.
+function inferEtaYear(month: number, day: number): number {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const thisYear = new Date(now.getFullYear(), month - 1, day);
+  const daysOff = (thisYear.getTime() - today.getTime()) / 86_400_000;
+  if (daysOff < -45) return now.getFullYear() + 1; // date already well past -> next year
+  if (daysOff > 320) return now.getFullYear() - 1; // far in the future -> last year
+  return now.getFullYear();
+}
+
+// Like parseEstimatedDelivery but also accepts a year-less "Month DD" / "DD Month"
+// (year inferred). Kept separate so the fuzzy full-page text scan stays strict and
+// doesn't grab a random year-less date; only targeted API values use this.
+function parseEtaLoose(raw: string): string | null {
+  const withYear = parseEstimatedDelivery(raw);
+  if (withYear) return withYear;
+  const text = clean(raw);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const MON = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+
+  let m = new RegExp(`\\b(${MON})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i').exec(text);
+  if (m) {
+    const mo = MONTH_NUM[m[1].toLowerCase()];
+    const day = Number(m[2]);
+    return `${inferEtaYear(mo, day)}-${pad(mo)}-${pad(day)}`;
+  }
+  m = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MON})[a-z]*\\b`, 'i').exec(text);
+  if (m) {
+    const mo = MONTH_NUM[m[2].toLowerCase()];
+    const day = Number(m[1]);
+    return `${inferEtaYear(mo, day)}-${pad(mo)}-${pad(day)}`;
+  }
+  return null;
+}
+
+// Fill a "{dotted.path}" template from a parsed JSON object (missing paths -> "").
+function resolveTemplate(obj: unknown, tmpl: string): string {
+  return tmpl.replace(/\{([^}]+)\}/g, (_all, path) => {
+    const v = resolvePath(obj, path.trim());
+    return v == null ? '' : String(v);
+  });
+}
+
+// ETA for a JSON response: a {path} template (date-parsed, year inferred) takes
+// precedence, else the raw value at estimatedDeliveryPath.
+function jsonEta(
+  json: unknown,
+  spec: { estimatedDeliveryText?: string; estimatedDeliveryPath?: string },
+): string | null {
+  if (spec.estimatedDeliveryText) return parseEtaLoose(resolveTemplate(json, spec.estimatedDeliveryText));
+  if (spec.estimatedDeliveryPath) {
+    return (resolvePath(json, spec.estimatedDeliveryPath) as string | undefined) ?? null;
+  }
   return null;
 }
 
@@ -226,7 +284,7 @@ function parseHtml(module: CarrierModule, html: string, source: 'http' | 'browse
   return summarize(module, module.code, events, source, banner || undefined, estimatedDelivery);
 }
 
-// ── Diagnostics (for the admin "Test" button) ──────────────────────────────────
+// Diagnostics (for the admin "Test" button)
 const BLOCK_MARKERS =
   /access denied|are you a human|recaptcha|captcha|verify you are|unusual traffic|enable javascript|request (was )?blocked|bot detection|pardon our interruption/i;
 
@@ -410,10 +468,7 @@ async function tryBrowserApi(
   if (!Array.isArray(rows) || rows.length === 0) return null;
   const events = mapJsonEvents(module, rows, spec.fields);
   const banner = spec.statusPath ? (resolvePath(json, spec.statusPath) as string | undefined) : undefined;
-  const eta = spec.estimatedDeliveryPath
-    ? (resolvePath(json, spec.estimatedDeliveryPath) as string | undefined)
-    : null;
-  const result = summarize(module, module.code, events, 'browser', banner, eta ?? null);
+  const result = summarize(module, module.code, events, 'browser', banner, jsonEta(json, spec));
   result.raw = json;
   return result;
 }

@@ -38,7 +38,7 @@ function notifyUserId(req: FastifyRequest): string {
 }
 
 export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
-  // ── Carrier API keys (per user) ─────────────────────────────────────────────
+  // Carrier API keys (per user)
   // A carrier with keys uses its official API; without, it scrapes.
   app.get('/api/me/credentials', async (req) => {
     const uid = notifyUserId(req);
@@ -107,7 +107,7 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ── Notification settings (per user) ────────────────────────────────────────
+  // Notification settings (per user)
   // Returns the user's trigger, their channel instances, and the type catalog
   // the UI needs to render the "add a notification" dropdown and its fields.
   app.get('/api/me/notify', async (req) => {
@@ -127,7 +127,7 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  // ── Channel instances (add / edit / remove / test) ──────────────────────────
+  // Channel instances (add / edit / remove / test)
   app.post<{ Body: { type?: string; label?: string; config?: Record<string, string>; enabled?: boolean } }>(
     '/api/me/notify/channels',
     async (req, reply) => {
@@ -205,7 +205,7 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // ── Web Push ────────────────────────────────────────────────────────────────
+  // Web Push
   app.get('/api/push/key', async () => ({ publicKey: publicVapidKey() }));
 
   app.post<{
@@ -234,7 +234,7 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  // ── REST API keys (per user) ────────────────────────────────────────────────
+  // REST API keys (per user)
   // Keys authenticate the public /api/v1 endpoints. The plaintext is only ever
   // returned once, at creation.
   app.get('/api/me/api-keys', async (req) => ({ keys: listApiKeys(notifyUserId(req)) }));

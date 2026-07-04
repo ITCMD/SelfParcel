@@ -2,7 +2,7 @@
 // No offline caching on purpose, the app is data-driven and online-only.
 
 // A fetch handler is required for the browser to treat the app as installable
-// (so beforeinstallprompt fires). This is a plain network pass-through — it adds
+// (so beforeinstallprompt fires). This is a plain network pass-through - it adds
 // nothing to the cache and provides no offline support.
 self.addEventListener('fetch', () => {});
 

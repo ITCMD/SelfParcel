@@ -9,7 +9,7 @@ import { getSetting, setSetting } from './settings.js';
 export type TriggerMode = 'status_change' | 'every_event' | 'delivered_exceptions';
 const TRIGGER_MODES: TriggerMode[] = ['status_change', 'every_event', 'delivered_exceptions'];
 
-// ── Trigger (when to notify) ───────────────────────────────────────────────────
+// Trigger (when to notify)
 export function getUserTrigger(userId: string): TriggerMode {
   const row = db
     .prepare('SELECT trigger FROM user_notify_settings WHERE user_id = ?')
@@ -29,7 +29,7 @@ export function saveUserTrigger(userId: string, trigger: string): void {
   ).run(userId, trigger);
 }
 
-// ── Channel instances ──────────────────────────────────────────────────────────
+// Channel instances
 export interface NotifyChannel {
   id: number;
   userId: string;
@@ -126,7 +126,7 @@ export function deleteUserNotifyChannel(userId: string, id: number): void {
   db.prepare('DELETE FROM user_notify_channels WHERE user_id = ? AND id = ?').run(userId, id);
 }
 
-// ── One-time migration from the old fixed-column layout ─────────────────────────
+// One-time migration from the old fixed-column layout
 // Turns each non-empty channel in user_notify_settings into a discrete instance.
 const MIGRATION_FLAG = 'migrated:notify_channels_v1';
 
@@ -163,7 +163,7 @@ export function migrateLegacyNotifyChannels(): void {
   setSetting(MIGRATION_FLAG, new Date().toISOString());
 }
 
-// ── Web Push subscriptions (per user) ──────────────────────────────────────────
+// Web Push subscriptions (per user)
 export interface PushSub {
   id: number;
   endpoint: string;

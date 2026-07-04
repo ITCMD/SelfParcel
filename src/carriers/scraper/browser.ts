@@ -15,11 +15,9 @@ export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-// NOTE: we intentionally do NOT set extraHTTPHeaders (Accept, sec-ch-ua, …) on
-// the context. New-headless Chrome already emits self-consistent client hints
-// matching its real version; forcing our own applies them uniformly to XHR and
-// the WAF sensor's own beacons, and Akamai flags the mismatch — that alone was
-// enough to get every UPS request blocked. Let Chrome send its natural headers.
+// Deliberately no extraHTTPHeaders: new-headless Chrome already sends client
+// hints matching its real version. Overriding them (Accept, sec-ch-ua) leaks
+// onto XHR and the WAF's own beacons, which got every UPS request Akamai-blocked.
 
 // GPU/ANGLE flags make the WebGL/canvas fingerprint look like a real machine.
 const LAUNCH_ARGS = [
@@ -37,12 +35,9 @@ async function launch(): Promise<Browser> {
     // Connect to an external real Chrome (browserless, chrome --remote-debugging).
     return (await chromium.connectOverCDP(config.scraper.cdpUrl)) as unknown as Browser;
   }
-  // Chrome's *new* headless (--headless=new) is a real browser rendering to no
-  // display, so it passes Akamai Bot Manager (UPS/USPS) where the legacy
-  // headless is instantly flagged. It also works on a headless server, unlike
-  // true headful. We therefore drive headless mode via the flag ourselves and
-  // launch Playwright as if headed; BROWSER_HEADFUL still forces a real window
-  // (needs a display) for the rare site that fingerprints even new-headless.
+  // --headless=new is a real browser with no display: it clears Akamai (UPS/USPS)
+  // where legacy headless is instantly flagged, and still runs on a headless
+  // server (unlike true headful). BROWSER_HEADFUL forces a real window instead.
   const args = [...LAUNCH_ARGS];
   if (!config.scraper.headful) args.push('--headless=new');
   return (await chromium.launch({
