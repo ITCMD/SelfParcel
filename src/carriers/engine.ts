@@ -9,10 +9,10 @@ import {
   type TrackingResult,
   type TrackStatus,
 } from './types.js';
-import { fetchRenderedHtml } from './scraper/browser.js';
+import { fetchRenderedHtml, fetchJsonViaBrowser } from './scraper/browser.js';
 import { assertPublicUrl, safeRequest } from '../net/safeFetch.js';
 import { getSetting, setSetting } from '../db/settings.js';
-import type { CarrierModule, FieldMap, FastJsonSpec } from './moduleSchema.js';
+import type { CarrierModule, FieldMap, FastJsonSpec, BrowserApiSpec } from './moduleSchema.js';
 
 // Render a module's tracking page in the stealth browser, replaying and saving
 // the carrier's session (cookies) so a hard-won bot-clearance is reused.
@@ -288,6 +288,18 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
   const spec = module.scraper!;
   const url = fillTemplate(module.request.url, tn);
 
+  if (spec.browserApi && config.scraper.browserFallback) {
+    try {
+      const r = await tryBrowserApi(module, spec.browserApi, tn);
+      if (r && r.events.length) {
+        return { ok: true, source: 'browser', events: r.events, status: r.status, notes };
+      }
+      notes.push('browserApi returned no events');
+    } catch (e) {
+      notes.push(`browserApi: ${msg(e)}`);
+    }
+  }
+
   if (spec.fastJson) {
     try {
       const r = await tryFastJson(module, spec.fastJson, tn);
@@ -361,6 +373,51 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
   return { ...last, ok: false, source: last.source ?? 'none', events: [], notes };
 }
 
+// Fetch a JSON tracking API from inside the stealth browser (clears WAFs and
+// echoes a token cookie into a header). Throws NotFoundError when the API
+// answers but has no data; returns null on a soft failure so the caller can
+// fall through to the HTML paths.
+async function tryBrowserApi(
+  module: CarrierModule,
+  spec: BrowserApiSpec,
+  tn: string,
+): Promise<TrackingResult | null> {
+  const warmupUrl = module.scraper?.browser?.warmupUrl
+    ? fillTemplate(module.scraper.browser.warmupUrl, tn)
+    : undefined;
+  const { body } = await fetchJsonViaBrowser(fillTemplate(spec.url, tn), {
+    method: spec.method,
+    body: fillBody(spec.body, tn),
+    contentType: spec.contentType,
+    tokenCookie: spec.tokenCookie,
+    tokenHeader: spec.tokenHeader,
+    warmupUrl,
+    timeoutMs: module.request.timeoutMs,
+    guard: async (target) => {
+      await assertPublicUrl(target);
+    },
+  });
+  if (matchesNotFound(module, body)) {
+    throw new NotFoundError(`${module.name}: status not available yet`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const rows = resolvePath(json, spec.eventsPath);
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const events = mapJsonEvents(module, rows, spec.fields);
+  const banner = spec.statusPath ? (resolvePath(json, spec.statusPath) as string | undefined) : undefined;
+  const eta = spec.estimatedDeliveryPath
+    ? (resolvePath(json, spec.estimatedDeliveryPath) as string | undefined)
+    : null;
+  const result = summarize(module, module.code, events, 'browser', banner, eta ?? null);
+  result.raw = json;
+  return result;
+}
+
 async function tryFastJson(
   module: CarrierModule,
   spec: FastJsonSpec,
@@ -398,6 +455,13 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
     } catch {
       /* fall through to HTML */
     }
+  }
+
+  // 1b) JSON API fetched through the warmed-up browser (WAF + token cookie).
+  // This is the primary path for JS-heavy sites behind Akamai (e.g. UPS).
+  if (spec.browserApi && config.scraper.browserFallback) {
+    const r = await tryBrowserApi(module, spec.browserApi, tn);
+    if (r) return r;
   }
 
   const url = fillTemplate(module.request.url, tn);

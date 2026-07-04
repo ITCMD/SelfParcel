@@ -114,39 +114,105 @@ const speedpak: CarrierModule = {
   },
 };
 
-// UPS and FedEx are scrapers too (their APIs need a business account / lengthy
-// approval). Both tracking pages are JS-heavy, so the browser fallback does the
-// real work. Selectors are a best-effort starting point and will likely need
-// tuning in the Providers panel; these carriers also use bot protection that can
-// block a headless browser.
+// UPS's own tracking API can't be used with a self-hosted app (UPS rejects
+// developer-app registration for non-businesses), so we drive their public
+// website's JSON API instead. That API (webapis.ups.com/track) sits behind
+// Akamai and requires an anti-CSRF token echoed from a cookie, so we fetch it
+// from *inside* the stealth browser after warming up on the tracking page
+// (which earns the clearance + X-XSRF-TOKEN-ST cookie). Response is the same
+// JSON the ups.com SPA renders — far more stable than scraping its Angular DOM.
+// The rowSelector/fields below are a best-effort HTML fallback only.
 const ups: CarrierModule = {
   schema: MODULE_SCHEMA,
   code: 'ups',
   name: 'UPS',
   kind: 'scraper',
-  detect: [{ pattern: '^1Z[0-9A-Z]{16}$' }, { pattern: '^(T\\d{10}|\\d{9}|\\d{26})$' }],
+  // 1Z…, UPS freight (9 digits), UPS "T" numbers, and Mail Innovations (18-digit
+  // and the 26-digit USPS handoff number).
+  detect: [{ pattern: '^1Z[0-9A-Z]{16}$' }, { pattern: '^(T\\d{10}|\\d{9}|\\d{18}|\\d{26})$' }],
   request: {
     url: 'https://www.ups.com/track?loc=en_US&tracknum={tn}&requester=ST/trackdetails',
     method: 'GET',
     headers: { 'Accept-Language': 'en-US,en;q=0.9' },
-    timeoutMs: 30000,
+    timeoutMs: 45000,
   },
-  notFound: ['could not (locate|find)', 'no tracking information', 'check the number'],
+  notFound: [
+    'could not (locate|find)',
+    'no tracking information',
+    'check the number',
+    'not available',
+    '"statusCode"\\s*:\\s*"2\\d\\d"[^}]*"statusText"\\s*:\\s*"(No|Failure)',
+  ],
+  // UPS scan phrasing -> normalized status (first match wins, in this order).
+  statusMap: {
+    delivered: ['delivered'],
+    out_for_delivery: ['out for delivery', 'loaded on delivery vehicle'],
+    exception: [
+      'exception',
+      'returned to sender',
+      'return to sender',
+      'delivery attempt',
+      'attempted',
+      'delayed',
+      'held',
+      'undeliverable',
+      'address',
+      'action needed',
+    ],
+    pre_transit: [
+      'order information received',
+      'order processed',
+      'label created',
+      'shipper created',
+      'ready for ups',
+      'ready for pickup',
+    ],
+    in_transit: [
+      'on the way',
+      'in transit',
+      'departed',
+      'arrived',
+      'processed',
+      'origin scan',
+      'received by',
+      'picked up',
+      'export scan',
+      'import scan',
+      'facility',
+    ],
+  },
   scraper: {
     browser: {
       enabled: true,
-      waitFor: '[class*="ups-milestone"], [class*="activity"], [data-test*="tracking"]',
+      // Warm up on the tracking page itself so Akamai clears us and the
+      // X-XSRF-TOKEN-ST cookie is set before we call the API.
+      warmupUrl: 'https://www.ups.com/track?loc=en_US&tracknum={tn}&requester=ST/trackdetails',
+      waitFor: 'ups-shipment-progress, [class*="ups-trackingbar"]',
     },
-    rowSelector:
-      '[class*="ups-milestone"], [class*="activity_row"], [class*="tracking-history"] li, tbody tr',
+    // Primary path: the website's own JSON tracking API, fetched in-browser.
+    browserApi: {
+      url: 'https://webapis.ups.com/track/api/Track/GetStatus?loc=en_US',
+      method: 'POST',
+      contentType: 'application/json',
+      body: '{"Locale":"en_US","TrackingNumber":["{tn}"],"Requester":"st/trackdetails","returnToValue":""}',
+      tokenCookie: 'X-XSRF-TOKEN-ST',
+      tokenHeader: 'X-XSRF-TOKEN',
+      eventsPath: 'trackDetails.0.shipmentProgressActivities',
+      statusPath: 'trackDetails.0.packageStatus',
+      fields: {
+        description: 'activityScan',
+        date: 'date',
+        location: 'location',
+      },
+    },
+    // HTML fallback (only reached if the API path yields nothing). Scan history
+    // lives in <ups-shipment-progress>, one event per .row.
+    rowSelector: 'ups-shipment-progress div.row',
     fields: {
-      description: '[class*="status"], [class*="activity"], [class*="milestone"], td',
-      date: '[class*="date"], [class*="time"], time',
-      location: '[class*="location"], [class*="city"]',
+      description: 'p.mb-0.ups-txt_size_sm',
+      date: 'p.mb-1.ups-txt_size_md',
+      location: 'div.ups-txt_size_sm',
     },
-    banner: '[class*="ups-status"], [class*="package_status"], [class*="current-status"]',
-    estimatedDelivery:
-      '[class*="estimated-delivery"], [class*="scheduledDelivery"], [class*="delivery-date"]',
   },
 };
 
@@ -263,7 +329,7 @@ const fourpx: CarrierModule = {
 };
 
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
-  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '2', module: ups },
+  { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '3', module: ups },
   { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
   { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '7', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },

@@ -43,6 +43,27 @@ export interface FastJsonSpec {
   estimatedDeliveryPath?: string;
 }
 
+/**
+ * A JSON tracking API fetched from *inside* the stealth browser after a warmup
+ * navigation. This is how we reach APIs that sit behind a WAF (Akamai) and/or
+ * require an anti-CSRF token echoed from a cookie: the warmup page load earns
+ * the clearance + token cookie, then the fetch runs in the page's own context
+ * (so cookies and origin match). Parsed with dotted JSON paths, like FastJson.
+ */
+export interface BrowserApiSpec {
+  url: string; // may contain {tn}
+  method?: string; // default POST
+  body?: string; // may contain {tn} (raw, not URL-encoded)
+  contentType?: string; // default application/json
+  /** Copy this cookie's value into `tokenHeader` on the request (e.g. XSRF). */
+  tokenCookie?: string;
+  tokenHeader?: string;
+  eventsPath: string;
+  fields: FieldMap;
+  statusPath?: string;
+  estimatedDeliveryPath?: string;
+}
+
 export interface ScraperSpec {
   browser?: { enabled?: boolean; waitFor?: string; warmupUrl?: string };
   rowSelector: string;
@@ -51,6 +72,8 @@ export interface ScraperSpec {
   /** Selector for the "expected/estimated delivery" text on the page. */
   estimatedDelivery?: string;
   fastJson?: FastJsonSpec;
+  /** Fetch a JSON API from within the warmed-up browser (see BrowserApiSpec). */
+  browserApi?: BrowserApiSpec;
 }
 
 export interface JsonSpec {
@@ -218,6 +241,17 @@ export function validateModule(
         if (!isStr(fj?.eventsPath)) errors.push('scraper.fastJson.eventsPath is required');
         checkFields(fj?.fields, errors, 'scraper.fastJson.fields');
         checkHeaders(fj?.headers, errors, 'scraper.fastJson.headers');
+      }
+      if (m.scraper.browserApi !== undefined) {
+        const ba = m.scraper.browserApi;
+        checkUrlTemplate(ba?.url, errors, 'scraper.browserApi.url');
+        if (!isStr(ba?.eventsPath)) errors.push('scraper.browserApi.eventsPath is required');
+        checkFields(ba?.fields, errors, 'scraper.browserApi.fields');
+        for (const key of ['body', 'method', 'contentType', 'tokenCookie', 'tokenHeader']) {
+          if (ba?.[key] !== undefined && typeof ba[key] !== 'string') {
+            errors.push(`scraper.browserApi.${key} must be a string`);
+          }
+        }
       }
     }
   }

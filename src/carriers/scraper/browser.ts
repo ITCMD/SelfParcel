@@ -15,16 +15,11 @@ export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-// Headers a real Chrome sends.
-const REALISTIC_HEADERS: Record<string, string> = {
-  Accept:
-    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Upgrade-Insecure-Requests': '1',
-  'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
-  'sec-ch-ua-mobile': '?0',
-  'sec-ch-ua-platform': '"Windows"',
-};
+// NOTE: we intentionally do NOT set extraHTTPHeaders (Accept, sec-ch-ua, …) on
+// the context. New-headless Chrome already emits self-consistent client hints
+// matching its real version; forcing our own applies them uniformly to XHR and
+// the WAF sensor's own beacons, and Akamai flags the mismatch — that alone was
+// enough to get every UPS request blocked. Let Chrome send its natural headers.
 
 // GPU/ANGLE flags make the WebGL/canvas fingerprint look like a real machine.
 const LAUNCH_ARGS = [
@@ -42,10 +37,18 @@ async function launch(): Promise<Browser> {
     // Connect to an external real Chrome (browserless, chrome --remote-debugging).
     return (await chromium.connectOverCDP(config.scraper.cdpUrl)) as unknown as Browser;
   }
+  // Chrome's *new* headless (--headless=new) is a real browser rendering to no
+  // display, so it passes Akamai Bot Manager (UPS/USPS) where the legacy
+  // headless is instantly flagged. It also works on a headless server, unlike
+  // true headful. We therefore drive headless mode via the flag ourselves and
+  // launch Playwright as if headed; BROWSER_HEADFUL still forces a real window
+  // (needs a display) for the rare site that fingerprints even new-headless.
+  const args = [...LAUNCH_ARGS];
+  if (!config.scraper.headful) args.push('--headless=new');
   return (await chromium.launch({
-    headless: !config.scraper.headful,
+    headless: false,
     executablePath: config.scraper.executablePath || undefined,
-    args: LAUNCH_ARGS,
+    args,
   })) as unknown as Browser;
 }
 
@@ -105,7 +108,6 @@ export async function fetchRenderedHtml(
     locale: 'en-US',
     timezoneId: 'America/New_York',
     viewport: { width: 1366, height: 900 },
-    extraHTTPHeaders: REALISTIC_HEADERS,
     storageState: parsedState as any,
   });
 
@@ -138,6 +140,137 @@ export async function fetchRenderedHtml(
   } finally {
     await context.close();
   }
+}
+
+export interface BrowserApiResult {
+  body: string;
+  storageState: string;
+}
+
+export interface BrowserApiOptions {
+  method?: string;
+  body?: string;
+  contentType?: string;
+  /** Read this cookie after warmup and echo it into `tokenHeader`. */
+  tokenCookie?: string;
+  tokenHeader?: string;
+  /** Page to load first, to earn WAF clearance + any token cookie. */
+  warmupUrl?: string;
+  timeoutMs?: number;
+  storageState?: string;
+  guard?: (target: string) => Promise<void>;
+}
+
+/**
+ * Warm up a carrier's site in the stealth browser, then run a JSON `fetch` from
+ * inside that page. This clears Akamai-style WAFs (the request rides the real
+ * browser's TLS/JA3 + clearance cookie) and lets us echo an anti-CSRF token from
+ * a cookie into a header. Returns the raw response body + refreshed session.
+ */
+export async function fetchJsonViaBrowser(
+  url: string,
+  opts: BrowserApiOptions = {},
+): Promise<BrowserApiResult> {
+  // Validate the two module-controlled URLs up front. We deliberately do NOT
+  // install a per-request context.route() guard here (as the HTML path does):
+  // intercepting every subresource breaks the bot-detection sensor's telemetry
+  // and mangles the API call's CORS preflight, so Akamai never grants clearance.
+  // The only attacker-influenced URLs are `url` and `warmupUrl`, both checked here.
+  if (opts.guard) {
+    await opts.guard(url);
+    if (opts.warmupUrl) await opts.guard(opts.warmupUrl);
+  }
+
+  const timeout = opts.timeoutMs ?? 30_000;
+  const browser = await getBrowser();
+
+  let parsedState: object | undefined;
+  if (opts.storageState) {
+    try {
+      parsedState = JSON.parse(opts.storageState);
+    } catch {
+      /* ignore a corrupt saved state */
+    }
+  }
+
+  const context = await browser.newContext({
+    userAgent: USER_AGENT,
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    viewport: { width: 1366, height: 900 },
+    storageState: parsedState as any,
+  });
+
+  const page = await context.newPage();
+  try {
+    // Land on the carrier page first so the WAF clearance + token cookies are
+    // set for this origin before we call its API.
+    const landing = opts.warmupUrl ?? new URL(url).origin;
+    await page.goto(landing, { waitUntil: 'domcontentloaded', timeout }).catch(() => {});
+    // A little human-like activity + settle time lets the bot-detection sensor
+    // (Akamai) collect telemetry and grant clearance before we hit the API.
+    await humanize(page);
+
+    let token = '';
+    if (opts.tokenCookie) {
+      const cookies = await context.cookies();
+      token = cookies.find((c) => c.name === opts.tokenCookie)?.value ?? '';
+    }
+
+    const body = await page.evaluate(
+      async (a: {
+        url: string;
+        method: string;
+        body?: string;
+        contentType: string;
+        tokenHeader?: string;
+        token: string;
+      }) => {
+        const headers: Record<string, string> = { 'Content-Type': a.contentType };
+        if (a.tokenHeader && a.token) headers[a.tokenHeader] = a.token;
+        const res = await fetch(a.url, {
+          method: a.method,
+          headers,
+          body: a.body,
+          credentials: 'include',
+        });
+        return await res.text();
+      },
+      {
+        url,
+        method: opts.method ?? 'POST',
+        body: opts.body,
+        contentType: opts.contentType ?? 'application/json',
+        tokenHeader: opts.tokenHeader,
+        token,
+      },
+    );
+
+    const storageState = JSON.stringify(await saveState(context));
+    return { body, storageState };
+  } finally {
+    await context.close();
+  }
+}
+
+const rnd = (min: number, max: number): number => min + Math.random() * (max - min);
+
+// Nudge the mouse/scroll a few times and settle, so a bot-detection sensor sees
+// human-like interaction telemetry before we make the tracking request. Timing,
+// positions, and step counts are randomized so the motion doesn't form a
+// fixed, fingerprintable pattern across runs.
+async function humanize(page: import('playwright').Page): Promise<void> {
+  try {
+    const moves = 3 + Math.floor(rnd(0, 4));
+    for (let i = 0; i < moves; i++) {
+      await page.mouse.move(rnd(80, 1200), rnd(100, 720), { steps: Math.floor(rnd(4, 16)) });
+      await page.mouse.wheel(0, rnd(90, 400));
+      await page.waitForTimeout(rnd(350, 1100));
+    }
+  } catch {
+    /* interaction is best-effort */
+  }
+  await page.waitForTimeout(rnd(2800, 4800));
 }
 
 async function saveState(context: BrowserContext): Promise<object> {
