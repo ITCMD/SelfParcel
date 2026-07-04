@@ -4,6 +4,11 @@ import { requireAdmin } from '../auth/routes.js';
 import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/password.js';
 import { isRegistrationOpen, setRegistrationOpen } from '../auth/local.js';
 import {
+  getRefreshIntervalMinutes,
+  setRefreshIntervalMinutes,
+  REFRESH_INTERVAL_OPTIONS,
+} from '../services/scheduler.js';
+import {
   countAdmins,
   createLocalUser,
   deleteUser,
@@ -146,6 +151,24 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     async (req) => {
       setRegistrationOpen(Boolean(req.body?.open));
       return { open: isRegistrationOpen() };
+    },
+  );
+
+  // Global tracking settings (currently just the background refresh cadence).
+  app.get('/api/admin/settings', { preHandler: requireAdmin }, async () => ({
+    refreshIntervalMinutes: getRefreshIntervalMinutes(),
+    refreshIntervalOptions: REFRESH_INTERVAL_OPTIONS,
+  }));
+
+  app.put<{ Body: { refreshIntervalMinutes?: number } }>(
+    '/api/admin/settings',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const minutes = Number(req.body?.refreshIntervalMinutes);
+      if (!Number.isFinite(minutes)) {
+        return reply.code(400).send({ error: 'refreshIntervalMinutes must be a number' });
+      }
+      return { refreshIntervalMinutes: setRefreshIntervalMinutes(minutes) };
     },
   );
 }

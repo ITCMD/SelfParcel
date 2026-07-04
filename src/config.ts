@@ -73,7 +73,8 @@ export const config = {
   port: int('PORT', 8080),
   host: str('HOST', '0.0.0.0'),
   databasePath: str('DATABASE_PATH', './data/selfparcel.sqlite'),
-  pollIntervalMinutes: int('POLL_INTERVAL_MINUTES', 30),
+  // Default background refresh cadence (minutes). Admins can override this at
+  // runtime in the UI; this is only the fallback until they pick a value.
   minRefreshMinutes: int('MIN_REFRESH_MINUTES', 10),
   // Public base URL, used for notification click-throughs.
   // e.g. https://parcels.example.com (trailing slash optional)

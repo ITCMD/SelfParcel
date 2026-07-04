@@ -1115,12 +1115,32 @@ $('#register-form').addEventListener('submit', async (e) => {
   }
 });
 
+function refreshRateLabel(m) {
+  let base;
+  if (m < 60) base = `Every ${m} minutes`;
+  else {
+    const h = m / 60;
+    base = h === 1 ? 'Every hour' : `Every ${h} hours`;
+  }
+  return base;
+}
+
 async function loadUsers() {
-  const [{ users, mode }, reg] = await Promise.all([
+  const [{ users, mode }, reg, settings] = await Promise.all([
     api('/api/admin/users'),
     api('/api/admin/registration'),
+    api('/api/admin/settings'),
   ]);
   $('#reg-toggle').checked = reg.open;
+
+  const opts = settings.refreshIntervalOptions || [];
+  $('#refresh-rate').innerHTML = opts
+    .map((m, i) => {
+      const label = refreshRateLabel(m) + (i === 0 ? ' (most aggressive)' : '');
+      const sel = m === settings.refreshIntervalMinutes ? ' selected' : '';
+      return `<option value="${m}"${sel}>${label}</option>`;
+    })
+    .join('');
   // OIDC provisions users on login, so hide the manual create form there.
   $('#create-user-box').classList.toggle('hidden', mode === 'oidc');
 
@@ -1202,6 +1222,19 @@ $('#create-user-form').addEventListener('submit', async (e) => {
 
 $('#reg-toggle').addEventListener('change', async (e) => {
   await api('/api/admin/registration', { method: 'PUT', body: JSON.stringify({ open: e.target.checked }) });
+});
+
+$('#refresh-rate').addEventListener('change', async (e) => {
+  const msg = $('#users-msg');
+  try {
+    await api('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ refreshIntervalMinutes: Number(e.target.value) }),
+    });
+    msg.textContent = 'Refresh rate updated.';
+  } catch (err) {
+    msg.textContent = err.message;
+  }
 });
 
 $('#open-users').addEventListener('click', async () => {

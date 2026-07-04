@@ -22,7 +22,7 @@ services:
       TZ: "${TZ:-UTC}"
       PORT: "8080"
       DATABASE_PATH: /data/selfparcel.sqlite
-      POLL_INTERVAL_MINUTES: "30"
+      # Default refresh cadence; adjustable at runtime in Users → Background refresh rate.
       MIN_REFRESH_MINUTES: "10"
       # All carriers scrape their public tracking page (stealth-hardened).
       SCRAPER_BROWSER_FALLBACK: "true"

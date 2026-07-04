@@ -144,6 +144,11 @@
         <label class="toggle" style="margin:14px 0">
           <input type="checkbox" id="reg-toggle" /> Allow open registration
         </label>
+        <div class="field" style="margin:0 0 14px">
+          <label class="field-label" for="refresh-rate">Background refresh rate</label>
+          <select id="refresh-rate"></select>
+          <p class="hint">How often active packages are re-checked. Delivered and archived packages are never re-checked. Manual refresh always works immediately.</p>
+        </div>
         <div id="users-list" class="user-list"></div>
         <div id="create-user-box">
           <div class="log-head">Add a user</div>
@@ -276,6 +281,6 @@
       </div>
     </div>
 
-    <script src="/app.js?v=4"></script>
+    <script src="/app.js?v=5"></script>
   </body>
 </html>

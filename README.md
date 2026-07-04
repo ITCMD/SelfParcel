@@ -94,8 +94,7 @@ services:
       - selfparcel-data:/data
     environment:
       TZ: "UTC"
-      # POLL_INTERVAL_MINUTES: "30"
-      # MIN_REFRESH_MINUTES: "10"
+      # MIN_REFRESH_MINUTES: "10"   # default refresh cadence; adjustable in-app
       # APP_BASE_URL: "https://parcels.example.com"   # used for notification links
       # SCRAPER_BROWSER_FALLBACK: "true"
 
@@ -284,8 +283,7 @@ All via environment variables; see [`.env.example`](.env.example).
 | `TZ` | `UTC` | container timezone, e.g. `America/New_York` |
 | `PORT` | `8080` | HTTP port |
 | `DATABASE_PATH` | `./data/selfparcel.sqlite` | SQLite file location |
-| `POLL_INTERVAL_MINUTES` | `30` | how often active packages refresh |
-| `MIN_REFRESH_MINUTES` | `10` | min age before a package is re-fetched |
+| `MIN_REFRESH_MINUTES` | `10` | default refresh cadence; admins can override it at runtime under Users → Background refresh rate |
 | `SCRAPER_BROWSER_FALLBACK` | `true` | allow the headless-browser fallback |
 | `BROWSER_CDP_URL` | — | connect scraping to an external Chrome over CDP |
 | `BROWSER_EXECUTABLE_PATH` / `BROWSER_HEADFUL` | — | use a real Chrome binary / run headful |
