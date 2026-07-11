@@ -399,9 +399,14 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
       // The API call often lands before/without full navigation success.
     });
 
-    const deadline = page.waitForTimeout(timeout).then(() => {
+    const deadline = page.waitForTimeout(timeout).then(async () => {
       const saw = misses.length ? ` (saw: ${misses.join(', ')})` : '';
-      throw new Error(`No successful response matching ${opts.urlPattern} within ${timeout}ms${saw}`);
+      // Describe what the page showed instead, so a WAF challenge or an error
+      // page is identifiable straight from the refresh error / logs.
+      const state = await describePage(page);
+      throw new Error(
+        `No successful response matching ${opts.urlPattern} within ${timeout}ms${saw}${state}`,
+      );
     });
     // If the capture wins, the still-pending deadline rejects once the page
     // closes; swallow that so it never becomes an unhandled rejection.
@@ -410,6 +415,23 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
     return { body };
   } finally {
     await context.close();
+  }
+}
+
+// Summarize what a page is currently showing, for capture-failure diagnostics.
+async function describePage(page: import('playwright').Page): Promise<string> {
+  try {
+    const url = page.url();
+    const title = await page.title().catch(() => '');
+    const text = await page
+      .evaluate(() => {
+        const doc = (globalThis as { document?: { body?: { innerText?: string } } }).document;
+        return doc?.body?.innerText?.replace(/\s+/g, ' ').slice(0, 160) ?? '';
+      })
+      .catch(() => '');
+    return ` [page: ${url} | title: "${title}" | text: "${text}"]`;
+  } catch {
+    return '';
   }
 }
 

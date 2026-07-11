@@ -1390,7 +1390,14 @@ $('#module-test-btn').addEventListener('click', async () => {
     out.innerHTML = `<p class="error-line">${escapeHtml(err.message)}</p>`;
     return;
   }
-  const { debug } = await api(`/api/admin/modules/${editingCode}/test`, { method: 'POST', body: JSON.stringify({ trackingNumber: tn }) });
+  let debug;
+  try {
+    ({ debug } = await api(`/api/admin/modules/${editingCode}/test`, { method: 'POST', body: JSON.stringify({ trackingNumber: tn }) }));
+  } catch (err) {
+    // Covers proxy timeouts (502/504) on slow tests as well as server errors.
+    out.innerHTML = `<p class="error-line">Test failed: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
   const ev = debug.events || [];
 
   if (debug.ok) {

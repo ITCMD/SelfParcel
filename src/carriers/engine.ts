@@ -373,7 +373,8 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
 
   if (spec.browserCapture && config.scraper.browserFallback) {
     try {
-      const r = await tryBrowserCapture(module, spec.browserCapture, tn);
+      // Single attempt (no retry) so the test answers before proxy timeouts.
+      const r = await tryBrowserCapture(module, spec.browserCapture, tn, { retry: false });
       if (r && r.events.length) {
         return {
           ok: true,
@@ -388,6 +389,11 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
     } catch (e) {
       notes.push(`browserCapture: ${msg(e)}`);
     }
+    // Don't run the HTTP/HTML stages: for capture modules they never parse
+    // anything (the data isn't in the DOM) and the capture error already
+    // includes a snapshot of what the page showed. Keeping the test to one
+    // browser cycle lets it respond before typical reverse-proxy timeouts.
+    return { ok: false, source: 'browser', events: [], notes };
   }
 
   if (spec.fastJson) {
@@ -514,6 +520,7 @@ async function tryBrowserCapture(
   module: CarrierModule,
   spec: BrowserCaptureSpec,
   tn: string,
+  opts: { retry?: boolean } = {},
 ): Promise<TrackingResult | null> {
   const capture = () =>
     captureJsonFromPage(fillTemplate(module.request.url, tn), {
@@ -526,8 +533,10 @@ async function tryBrowserCapture(
   let body: string;
   try {
     ({ body } = await capture());
-  } catch {
+  } catch (err) {
     // The SPA occasionally skips its API call on a load; one fresh retry.
+    // The admin Test skips it to answer before reverse-proxy timeouts.
+    if (opts.retry === false) throw err;
     ({ body } = await capture());
   }
   if (matchesNotFound(module, body)) {

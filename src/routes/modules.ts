@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../auth/routes.js';
 import { validateModule } from '../carriers/moduleSchema.js';
-import { inspectModule } from '../carriers/engine.js';
+import { inspectModule, type ScrapeDebug } from '../carriers/engine.js';
 import { reloadModules } from '../carriers/registry.js';
 import {
   countPackagesForCarrier,
@@ -208,8 +208,27 @@ export async function registerModuleRoutes(app: FastifyInstance): Promise<void> 
       if (!m) return reply.code(404).send({ error: 'Module not found' });
       const tn = (req.body?.trackingNumber ?? '').trim();
       if (!tn) return reply.code(400).send({ error: 'trackingNumber is required' });
-      const debug = await inspectModule(m.module, tn);
+      // Hard cap so the endpoint always replies - a jammed scrape queue or a
+      // hanging page must not leave the UI (or a reverse proxy) waiting forever.
+      const timedOut: ScrapeDebug = {
+        ok: false,
+        source: 'none',
+        events: [],
+        notes: [
+          `Test gave up after ${TEST_CAP_MS / 1000}s - the scrape queue may be busy with scheduled refreshes, or the page is hanging. Package refresh errors in the packages list carry the same diagnostics.`,
+        ],
+      };
+      const debug = await Promise.race([
+        inspectModule(m.module, tn),
+        new Promise<ScrapeDebug>((resolve) => {
+          const t = setTimeout(() => resolve(timedOut), TEST_CAP_MS);
+          t.unref?.();
+        }),
+      ]);
       return { debug };
     },
   );
 }
+
+// Keep under common reverse-proxy read timeouts (usually 60-120s).
+const TEST_CAP_MS = 90_000;
