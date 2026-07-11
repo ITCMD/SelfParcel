@@ -394,12 +394,42 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
           misses.push('unreadable body');
         });
     });
+    // A request that never got a response at all (DNS blocked, connection
+    // refused/reset, CORS kill) - names the network error, e.g.
+    // "net::ERR_NAME_NOT_RESOLVED" when a DNS filter blocks the API host.
+    page.on('requestfailed', (req) => {
+      if (done || !re.test(req.url())) return;
+      misses.push(req.failure()?.errorText ?? 'request failed');
+    });
 
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout }).catch(() => {
       // The API call often lands before/without full navigation success.
     });
 
-    const deadline = page.waitForTimeout(timeout).then(async () => {
+    // Wait for the match or ms, whichever first; null means no match yet.
+    const waitForMatch = (ms: number): Promise<string | null> =>
+      Promise.race([
+        matched,
+        page
+          .waitForTimeout(ms)
+          .then(() => null)
+          .catch(() => null),
+      ]);
+
+    // Phase 1: the call usually lands 2-3s after navigation.
+    let body = await waitForMatch(Math.min(12_000, timeout));
+
+    if (body === null) {
+      // Phase 2: no (successful) call. Akamai may have scored the fresh
+      // context bot-ish and CORS-killed the page's own API call. Feed the
+      // sensor human-like telemetry, then reload IN THIS CONTEXT so the
+      // now-validated clearance cookies ride the second attempt.
+      await humanize(page);
+      await page.reload({ waitUntil: 'domcontentloaded', timeout }).catch(() => {});
+      body = await waitForMatch(timeout);
+    }
+
+    if (body === null) {
       const saw = misses.length ? ` (saw: ${misses.join(', ')})` : '';
       // Describe what the page showed instead, so a WAF challenge or an error
       // page is identifiable straight from the refresh error / logs.
@@ -407,11 +437,7 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
       throw new Error(
         `No successful response matching ${opts.urlPattern} within ${timeout}ms${saw}${state}`,
       );
-    });
-    // If the capture wins, the still-pending deadline rejects once the page
-    // closes; swallow that so it never becomes an unhandled rejection.
-    deadline.catch(() => {});
-    const body = await Promise.race([matched, deadline]);
+    }
     return { body };
   } finally {
     await context.close();
