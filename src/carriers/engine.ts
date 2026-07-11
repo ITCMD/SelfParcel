@@ -595,8 +595,10 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
   }
 
   // 1c) Capture the API response the page itself fires while rendering (FedEx).
-  // Remember why it failed: the HTML fallbacks rarely work for capture-based
-  // modules, and "could not parse tracking page" would bury the real cause.
+  // A soft miss (response parsed but empty) still tries the HTML fallbacks; a
+  // thrown error does NOT - the fallback would re-render the same page that
+  // just failed, burning another timeout to bury the real cause behind
+  // "could not parse tracking page".
   let captureError: string | undefined;
   if (spec.browserCapture && config.scraper.browserFallback) {
     try {
@@ -605,7 +607,9 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
       captureError = 'captured API response had no events';
     } catch (err) {
       if (err instanceof NotFoundError) throw err;
-      captureError = err instanceof Error ? err.message : String(err);
+      throw new ProviderUnavailableError(
+        `${module.name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
