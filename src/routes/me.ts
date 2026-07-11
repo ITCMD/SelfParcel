@@ -42,13 +42,14 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
   // A carrier with keys uses its official API; without, it scrapes.
   app.get('/api/me/credentials', async (req) => {
     const uid = notifyUserId(req);
-    const mine = new Map(listUserCredentialCarriers(uid).map((r) => [r.carrier, r.env]));
+    const mine = new Map(listUserCredentialCarriers(uid).map((r) => [r.carrier, r]));
     return {
       carriers: API_CARRIERS.map((code) => ({
         code,
         name: carrierName(code),
         hasOwn: mine.has(code),
-        env: mine.get(code) ?? null,
+        env: mine.get(code)?.env ?? null,
+        clientId: mine.get(code)?.clientId ?? null,
       })),
     };
   });
@@ -60,13 +61,17 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
       if (!API_CARRIERS.includes(carrier)) {
         return reply.code(400).send({ error: 'That carrier has no API option' });
       }
+      const uid = notifyUserId(req);
       const clientId = (req.body?.clientId ?? '').trim();
-      const clientSecret = (req.body?.clientSecret ?? '').trim();
+      let clientSecret = (req.body?.clientSecret ?? '').trim();
+      // A blank secret on an already-configured carrier means "keep the stored
+      // one" - the UI shows a mask instead of the secret and sends it empty.
+      if (!clientSecret) clientSecret = getUserCredentials(uid, carrier)?.clientSecret ?? '';
       if (!clientId || !clientSecret) {
         return reply.code(400).send({ error: 'clientId and clientSecret are required' });
       }
       const env = req.body?.env === 'test' ? 'test' : 'production';
-      setUserCredentials(notifyUserId(req), carrier, { clientId, clientSecret, env });
+      setUserCredentials(uid, carrier, { clientId, clientSecret, env });
       return { ok: true };
     },
   );
@@ -89,11 +94,15 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
       const clientId = (req.body?.clientId ?? '').trim();
       const clientSecret = (req.body?.clientSecret ?? '').trim();
       const env: 'production' | 'test' = req.body?.env === 'test' ? 'test' : 'production';
-      const creds =
-        clientId && clientSecret
-          ? { clientId, clientSecret, env }
-          : getUserCredentials(notifyUserId(req), carrier);
-      if (!creds) {
+      // Fill whatever the form left blank from the saved pair, so "test" works
+      // with a masked secret (and after editing just the client ID).
+      const saved = getUserCredentials(notifyUserId(req), carrier);
+      const creds = {
+        clientId: clientId || saved?.clientId || '',
+        clientSecret: clientSecret || saved?.clientSecret || '',
+        env,
+      };
+      if (!creds.clientId || !creds.clientSecret) {
         return reply.code(400).send({ error: 'Enter or save a Client ID and secret first' });
       }
 

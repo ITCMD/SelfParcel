@@ -647,17 +647,22 @@ async function disablePush() {
 }
 
 // Per-user carrier API keys (optional; presence = use the API).
+// A saved pair shows its client ID and a masked secret; the mask is a display
+// placeholder only (the plaintext secret is never sent back to the browser) and
+// saving with the mask untouched keeps the stored secret.
+const SECRET_MASK = '••••••••••••••••';
+
 async function loadCredentials() {
   const { carriers } = await api('/api/me/credentials');
   $('#creds-list').innerHTML = carriers
     .map((c) => {
       const status = c.hasOwn
-        ? '<span class="a-tag admin">using API</span>'
+        ? '<span class="a-tag admin">API keys saved</span>'
         : '<span class="a-tag">scraping</span>';
       return `<div class="admin-row" data-cred="${c.code}">
         <span class="grow"><span class="a-name">${escapeHtml(c.name)}</span> ${status}</span>
-        <input data-cid="${c.code}" placeholder="Client ID" autocomplete="off" />
-        <input data-csec="${c.code}" type="password" placeholder="Client secret" autocomplete="off" />
+        <input data-cid="${c.code}" placeholder="Client ID" autocomplete="off" value="${escapeHtml(c.clientId ?? '')}" />
+        <input data-csec="${c.code}" type="password" placeholder="Client secret" autocomplete="off" value="${c.hasOwn ? SECRET_MASK : ''}" />
         <select data-cenv="${c.code}">
           <option value="production"${c.env === 'production' ? ' selected' : ''}>production</option>
           <option value="test"${c.env === 'test' ? ' selected' : ''}>test</option>
@@ -665,7 +670,7 @@ async function loadCredentials() {
         <span class="a-actions">
           <button class="btn small" data-credact="save" data-code="${c.code}">Save</button>
           <button class="btn small" data-credact="test" data-code="${c.code}">Test</button>
-          ${c.hasOwn ? `<button class="btn small danger" data-credact="clear" data-code="${c.code}">Clear</button>` : ''}
+          ${c.hasOwn ? `<button class="btn small danger" data-credact="clear" data-code="${c.code}">Remove</button>` : ''}
         </span>
       </div>`;
     })
@@ -676,11 +681,16 @@ $('#creds-list').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-credact]');
   if (!btn) return;
   const code = btn.dataset.code;
-  const creds = () => ({
-    clientId: $(`[data-cid="${code}"]`).value.trim(),
-    clientSecret: $(`[data-csec="${code}"]`).value.trim(),
-    env: $(`[data-cenv="${code}"]`).value,
-  });
+  // An untouched mask means "use the stored secret" - send it empty and let
+  // the server fill it in from what's on file.
+  const creds = () => {
+    const secret = $(`[data-csec="${code}"]`).value.trim();
+    return {
+      clientId: $(`[data-cid="${code}"]`).value.trim(),
+      clientSecret: secret === SECRET_MASK ? '' : secret,
+      env: $(`[data-cenv="${code}"]`).value,
+    };
+  };
   const msg = $('#creds-msg');
 
   // Test authenticates without saving, so don't reload the row (it would wipe
@@ -706,6 +716,7 @@ $('#creds-list').addEventListener('click', async (e) => {
     if (btn.dataset.credact === 'save') {
       await api(`/api/me/credentials/${code}`, { method: 'PUT', body: JSON.stringify(creds()) });
     } else if (btn.dataset.credact === 'clear') {
+      if (!confirm(`Remove your ${code.toUpperCase()} API keys? Tracking will fall back to scraping.`)) return;
       await api(`/api/me/credentials/${code}`, { method: 'DELETE' });
     }
     msg.textContent = '';

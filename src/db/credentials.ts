@@ -55,11 +55,14 @@ export function deleteUserCredentials(userId: string, carrier: string): void {
   );
 }
 
-/** Which carriers a user has keys for, plus the env. No secrets returned. */
+/** Which carriers a user has keys for, plus the env and client ID. The secret
+ *  is never returned; the UI shows a mask when one is stored. */
 export function listUserCredentialCarriers(
   userId: string,
-): { carrier: string; env: string | null }[] {
+): { carrier: string; env: string | null; clientId: string }[] {
   return db
-    .prepare('SELECT carrier, env FROM user_carrier_credentials WHERE user_id = ?')
-    .all(userId) as { carrier: string; env: string | null }[];
+    .prepare(
+      'SELECT carrier, env, client_id AS clientId FROM user_carrier_credentials WHERE user_id = ?',
+    )
+    .all(userId) as { carrier: string; env: string | null; clientId: string }[];
 }

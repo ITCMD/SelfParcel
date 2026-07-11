@@ -11,6 +11,61 @@ chromium.use(StealthPlugin());
 
 let browserPromise: Promise<Browser> | null = null;
 
+// ---- Scrape queue ----------------------------------------------------------
+// Every piece of browser work (scheduler refreshes, manual refreshes, first
+// fetches, module tests) funnels through one slot, so concurrent requests
+// queue instead of stacking Chromium contexts and spiking memory. A second
+// slot opens only when the queue is genuinely backed up. Once the queue
+// drains, an idle timer closes Chromium entirely so its memory is returned
+// between refresh ticks.
+
+const SECOND_SLOT_BACKLOG = 4; // queued jobs before a second slot opens
+let activeScrapes = 0;
+const scrapeQueue: Array<() => void> = [];
+let idleCloseTimer: NodeJS.Timeout | null = null;
+
+function scrapeSlots(): number {
+  return scrapeQueue.length >= SECOND_SLOT_BACKLOG ? 2 : 1;
+}
+
+function cancelIdleClose(): void {
+  if (idleCloseTimer) clearTimeout(idleCloseTimer);
+  idleCloseTimer = null;
+}
+
+function scheduleIdleClose(): void {
+  cancelIdleClose();
+  const minutes = config.scraper.idleCloseMinutes;
+  if (minutes <= 0) return;
+  idleCloseTimer = setTimeout(() => {
+    idleCloseTimer = null;
+    if (activeScrapes === 0 && scrapeQueue.length === 0) void closeBrowser();
+  }, minutes * 60_000);
+  idleCloseTimer.unref?.();
+}
+
+async function withScrapeSlot<T>(job: () => Promise<T>): Promise<T> {
+  cancelIdleClose();
+  if (activeScrapes >= scrapeSlots()) {
+    // The releaser reserves our slot (bumps activeScrapes) before waking us,
+    // so a caller arriving in between can't overshoot the limit.
+    await new Promise<void>((resolve) => scrapeQueue.push(resolve));
+  } else {
+    activeScrapes++;
+  }
+  try {
+    return await job();
+  } finally {
+    activeScrapes--;
+    if (scrapeQueue.length > 0 && activeScrapes < scrapeSlots()) {
+      activeScrapes++;
+      scrapeQueue.shift()!();
+    } else if (activeScrapes === 0 && scrapeQueue.length === 0) {
+      scheduleIdleClose();
+    }
+  }
+}
+
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -52,10 +107,20 @@ export async function getBrowser(): Promise<Browser> {
     throw new Error('Browser fallback is disabled (SCRAPER_BROWSER_FALLBACK=false)');
   }
   if (!browserPromise) {
-    browserPromise = launch().catch((err) => {
-      browserPromise = null; // allow retry on next call
-      throw err;
-    });
+    const p = launch()
+      .then((browser) => {
+        // If Chromium crashes or is closed out from under us, forget it so the
+        // next scrape relaunches instead of failing against a dead browser.
+        browser.on('disconnected', () => {
+          if (browserPromise === p) browserPromise = null;
+        });
+        return browser;
+      })
+      .catch((err) => {
+        if (browserPromise === p) browserPromise = null; // allow retry on next call
+        throw err;
+      });
+    browserPromise = p;
   }
   return browserPromise;
 }
@@ -85,7 +150,10 @@ export async function fetchRenderedHtml(
     await opts.guard(url);
     if (opts.warmupUrl) await opts.guard(opts.warmupUrl);
   }
+  return withScrapeSlot(() => renderHtml(url, opts));
+}
 
+async function renderHtml(url: string, opts: RenderOptions): Promise<RenderResult> {
   const timeout = opts.timeoutMs ?? 30_000;
   const browser = await getBrowser();
 
@@ -175,7 +243,10 @@ export async function fetchJsonViaBrowser(
     await opts.guard(url);
     if (opts.warmupUrl) await opts.guard(opts.warmupUrl);
   }
+  return withScrapeSlot(() => browserApiCall(url, opts));
+}
 
+async function browserApiCall(url: string, opts: BrowserApiOptions): Promise<BrowserApiResult> {
   const timeout = opts.timeoutMs ?? 30_000;
   const browser = await getBrowser();
 
@@ -277,9 +348,13 @@ async function saveState(context: BrowserContext): Promise<object> {
 }
 
 export async function closeBrowser(): Promise<void> {
-  if (browserPromise) {
-    const b = await browserPromise.catch(() => null);
+  cancelIdleClose();
+  // Detach before awaiting, so a scrape that starts mid-close launches a fresh
+  // browser instead of getting this closing one.
+  const p = browserPromise;
+  browserPromise = null;
+  if (p) {
+    const b = await p.catch(() => null);
     await b?.close().catch(() => {});
-    browserPromise = null;
   }
 }

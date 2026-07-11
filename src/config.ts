@@ -90,6 +90,10 @@ export const config = {
     executablePath: str('BROWSER_EXECUTABLE_PATH'),
     // Run headful (needs a display / xvfb); harder to fingerprint than headless.
     headful: bool('BROWSER_HEADFUL', false),
+    // Close the scraping browser after this many minutes without a scrape, so
+    // an idle Chromium doesn't hold hundreds of MB between refresh ticks.
+    // 0 keeps it alive forever (the old behavior).
+    idleCloseMinutes: int('BROWSER_IDLE_CLOSE_MINUTES', 5),
   },
 
   notify: {

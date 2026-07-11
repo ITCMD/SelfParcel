@@ -287,6 +287,7 @@ All via environment variables; see [`.env.example`](.env.example).
 | `SCRAPER_BROWSER_FALLBACK` | `true` | allow the headless-browser fallback |
 | `BROWSER_CDP_URL` | — | connect scraping to an external Chrome over CDP |
 | `BROWSER_EXECUTABLE_PATH` / `BROWSER_HEADFUL` | — | use a real Chrome binary / run headful |
+| `BROWSER_IDLE_CLOSE_MINUTES` | `5` | close the scraping browser after this many idle minutes to free its memory; `0` keeps it running |
 | `AUTH_MODE` | `none` | `none`, `local`, or `oidc` |
 | `SESSION_SECRET` | | signs session cookies; required for local/oidc |
 | `OIDC_*` | | OIDC provider config |
