@@ -366,19 +366,32 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
       settle = resolve;
     });
     let done = false;
+    // Rejected attempts we saw while waiting, for the timeout error message -
+    // "saw: HTTP 403" tells an admin it's a WAF block, not a dead selector.
+    const misses: string[] = [];
     page.on('response', (res) => {
       if (done || !re.test(res.url())) return;
-      // The first matching response wins; read its body before the page moves on.
+      const method = res.request().method();
+      if (method === 'OPTIONS' || method === 'HEAD') return; // CORS preflight noise
+      if (res.status() < 200 || res.status() >= 300) {
+        // Auth bootstrap or WAF rejection; SPAs often retry - keep waiting.
+        misses.push(`HTTP ${res.status()}`);
+        return;
+      }
+      // The first successful response wins; read its body before the page moves on.
       res
         .text()
         .then((text) => {
-          if (!done) {
-            done = true;
-            settle(text);
+          if (done) return;
+          if (!text) {
+            misses.push('empty body');
+            return;
           }
+          done = true;
+          settle(text);
         })
         .catch(() => {
-          /* redirect/aborted response body - keep waiting for the next match */
+          misses.push('unreadable body');
         });
     });
 
@@ -387,7 +400,8 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
     });
 
     const deadline = page.waitForTimeout(timeout).then(() => {
-      throw new Error(`No response matching ${opts.urlPattern} within ${timeout}ms`);
+      const saw = misses.length ? ` (saw: ${misses.join(', ')})` : '';
+      throw new Error(`No successful response matching ${opts.urlPattern} within ${timeout}ms${saw}`);
     });
     // If the capture wins, the still-pending deadline rejects once the page
     // closes; swallow that so it never becomes an unhandled rejection.

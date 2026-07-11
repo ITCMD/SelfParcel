@@ -515,13 +515,21 @@ async function tryBrowserCapture(
   spec: BrowserCaptureSpec,
   tn: string,
 ): Promise<TrackingResult | null> {
-  const { body } = await captureJsonFromPage(fillTemplate(module.request.url, tn), {
-    urlPattern: spec.urlPattern,
-    timeoutMs: module.request.timeoutMs,
-    guard: async (target) => {
-      await assertPublicUrl(target);
-    },
-  });
+  const capture = () =>
+    captureJsonFromPage(fillTemplate(module.request.url, tn), {
+      urlPattern: spec.urlPattern,
+      timeoutMs: module.request.timeoutMs,
+      guard: async (target) => {
+        await assertPublicUrl(target);
+      },
+    });
+  let body: string;
+  try {
+    ({ body } = await capture());
+  } catch {
+    // The SPA occasionally skips its API call on a load; one fresh retry.
+    ({ body } = await capture());
+  }
   if (matchesNotFound(module, body)) {
     throw new NotFoundError(`${module.name}: status not available yet`);
   }
@@ -587,13 +595,17 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
   }
 
   // 1c) Capture the API response the page itself fires while rendering (FedEx).
+  // Remember why it failed: the HTML fallbacks rarely work for capture-based
+  // modules, and "could not parse tracking page" would bury the real cause.
+  let captureError: string | undefined;
   if (spec.browserCapture && config.scraper.browserFallback) {
     try {
       const r = await tryBrowserCapture(module, spec.browserCapture, tn);
       if (r) return r;
+      captureError = 'captured API response had no events';
     } catch (err) {
       if (err instanceof NotFoundError) throw err;
-      // otherwise fall through to the HTTP/HTML paths
+      captureError = err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -626,7 +638,12 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
   }
   const html = await renderWithSession(module, url);
   const parsed = parseHtml(module, html, 'browser');
-  if (!parsed) throw new NotFoundError(`${module.name}: could not parse tracking page`);
+  if (!parsed) {
+    if (captureError) {
+      throw new ProviderUnavailableError(`${module.name}: ${captureError}`);
+    }
+    throw new NotFoundError(`${module.name}: could not parse tracking page`);
+  }
   return parsed;
 }
 
