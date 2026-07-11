@@ -9,10 +9,16 @@ import {
   type TrackingResult,
   type TrackStatus,
 } from './types.js';
-import { fetchRenderedHtml, fetchJsonViaBrowser } from './scraper/browser.js';
+import { fetchRenderedHtml, fetchJsonViaBrowser, captureJsonFromPage } from './scraper/browser.js';
 import { assertPublicUrl, safeRequest } from '../net/safeFetch.js';
 import { getSetting, setSetting } from '../db/settings.js';
-import type { CarrierModule, FieldMap, FastJsonSpec, BrowserApiSpec } from './moduleSchema.js';
+import type {
+  CarrierModule,
+  FieldMap,
+  FastJsonSpec,
+  BrowserApiSpec,
+  BrowserCaptureSpec,
+} from './moduleSchema.js';
 
 // Render a module's tracking page in the stealth browser, replaying and saving
 // the carrier's session (cookies) so a hard-won bot-clearance is reused.
@@ -195,8 +201,15 @@ function mapJsonEvents(
   return rows.map((e) => {
     const desc = clean(String(resolvePath(e, fields.description) ?? 'Update'));
     const loc = fields.location ? resolvePath(e, fields.location) : undefined;
+    // dateText assembles the timestamp from a {path} template (for APIs that
+    // split date/time/offset across fields); `date` reads a single path.
+    const rawDate = fields.dateText
+      ? resolveTemplate(e, fields.dateText)
+      : fields.date
+        ? resolvePath(e, fields.date)
+        : null;
     return {
-      timestamp: parseLooseDate(fields.date ? resolvePath(e, fields.date) : null),
+      timestamp: parseLooseDate(rawDate),
       status: statusFromText(module, desc),
       description: desc,
       location: loc ? clean(String(loc)) : undefined,
@@ -358,6 +371,25 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
     }
   }
 
+  if (spec.browserCapture && config.scraper.browserFallback) {
+    try {
+      const r = await tryBrowserCapture(module, spec.browserCapture, tn);
+      if (r && r.events.length) {
+        return {
+          ok: true,
+          source: 'browser',
+          events: r.events,
+          status: r.status,
+          estimatedDelivery: r.estimatedDelivery,
+          notes,
+        };
+      }
+      notes.push('browserCapture returned no events');
+    } catch (e) {
+      notes.push(`browserCapture: ${msg(e)}`);
+    }
+  }
+
   if (spec.fastJson) {
     try {
       const r = await tryFastJson(module, spec.fastJson, tn);
@@ -473,6 +505,41 @@ async function tryBrowserApi(
   return result;
 }
 
+// Render the module's tracking page in a fresh context and lift the JSON out
+// of the API response the page itself makes (matched by URL regex). No session
+// replay - see captureJsonFromPage. Throws NotFoundError when the API answers
+// but has no data; returns null on a soft failure so the caller can fall
+// through.
+async function tryBrowserCapture(
+  module: CarrierModule,
+  spec: BrowserCaptureSpec,
+  tn: string,
+): Promise<TrackingResult | null> {
+  const { body } = await captureJsonFromPage(fillTemplate(module.request.url, tn), {
+    urlPattern: spec.urlPattern,
+    timeoutMs: module.request.timeoutMs,
+    guard: async (target) => {
+      await assertPublicUrl(target);
+    },
+  });
+  if (matchesNotFound(module, body)) {
+    throw new NotFoundError(`${module.name}: status not available yet`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const rows = resolvePath(json, spec.eventsPath);
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const events = mapJsonEvents(module, rows, spec.fields);
+  const banner = spec.statusPath ? (resolvePath(json, spec.statusPath) as string | undefined) : undefined;
+  const result = summarize(module, module.code, events, 'browser', banner, jsonEta(json, spec));
+  result.raw = json;
+  return result;
+}
+
 async function tryFastJson(
   module: CarrierModule,
   spec: FastJsonSpec,
@@ -517,6 +584,17 @@ async function trackScraper(module: CarrierModule, tn: string): Promise<Tracking
   if (spec.browserApi && config.scraper.browserFallback) {
     const r = await tryBrowserApi(module, spec.browserApi, tn);
     if (r) return r;
+  }
+
+  // 1c) Capture the API response the page itself fires while rendering (FedEx).
+  if (spec.browserCapture && config.scraper.browserFallback) {
+    try {
+      const r = await tryBrowserCapture(module, spec.browserCapture, tn);
+      if (r) return r;
+    } catch (err) {
+      if (err instanceof NotFoundError) throw err;
+      // otherwise fall through to the HTTP/HTML paths
+    }
   }
 
   const url = fillTemplate(module.request.url, tn);

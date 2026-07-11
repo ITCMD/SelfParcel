@@ -217,6 +217,14 @@ const ups: CarrierModule = {
   },
 };
 
+// FedEx's tracking page (fedextrack -> the "WTRK" app) renders inside shadow
+// DOM, so page.content() has no scan events to scrape. The data comes from the
+// api.fedex.com/track/v2/shipments JSON API - but that gateway only sends CORS
+// headers to the page's own bootstrap call (replicating the request from
+// page.evaluate gets a response with no Access-Control-Allow-Origin, even with
+// the same bearer/headers). So instead of calling it, browserCapture renders
+// the page and reads the response of the call the page itself makes. The old
+// HTML selectors remain only as a last-ditch fallback.
 const fedex: CarrierModule = {
   schema: MODULE_SCHEMA,
   code: 'fedex',
@@ -227,13 +235,59 @@ const fedex: CarrierModule = {
     url: 'https://www.fedex.com/fedextrack/?trknbr={tn}',
     method: 'GET',
     headers: { 'Accept-Language': 'en-US,en;q=0.9' },
-    timeoutMs: 30000,
+    timeoutMs: 45000,
   },
-  notFound: ['unable to (locate|retrieve)', 'no record', 'check the number'],
+  notFound: [
+    'unable to (locate|retrieve)',
+    'no record',
+    'check the number',
+    '"notFound"\\s*:\\s*true',
+  ],
+  // FedEx scan-event vocabulary -> normalized status (first match wins).
+  statusMap: {
+    delivered: ['delivered'],
+    out_for_delivery: ['out for delivery', 'vehicle for delivery'],
+    exception: [
+      'exception',
+      'delay',
+      'returned to shipper',
+      'return to shipper',
+      'undeliverable',
+      'held',
+      'incorrect address',
+      'unable to deliver',
+    ],
+    pre_transit: ['shipment information sent', 'label created', 'shipment info'],
+    in_transit: [
+      'picked up',
+      'arrived',
+      'departed',
+      'left fedex',
+      'on the way',
+      'in transit',
+      'at local fedex facility',
+      'at destination sort',
+      'international shipment release',
+      'clearance',
+    ],
+  },
   scraper: {
     browser: {
       enabled: true,
       waitFor: '[class*="travel-history"], [class*="scan-event"], [class*="status"]',
+    },
+    browserCapture: {
+      urlPattern: 'api\\.fedex\\.com/track/v2/shipments',
+      eventsPath: 'output.packages.0.scanEventList',
+      fields: {
+        description: 'status',
+        dateText: '{date}T{time}{gmtOffset}',
+        location: 'scanLocation',
+      },
+      statusPath: 'output.packages.0.keyStatus',
+      // displayEstDeliveryDt is "7/11/2026"; estDeliveryDt's ISO form defeats
+      // the loose date parser (word boundary can't split "…-11T00…").
+      estimatedDeliveryText: '{output.packages.0.displayEstDeliveryDt}',
     },
     rowSelector:
       '[class*="travel-history"] [class*="row"], [class*="scan-event"], [class*="activity"] li, tbody tr',
@@ -331,7 +385,7 @@ const fourpx: CarrierModule = {
 
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '4', module: ups },
-  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '2', module: fedex },
+  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '5', module: fedex },
   { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '7', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
   { code: 'fourpx', name: '4PX', kind: 'json', seedVersion: '1', module: fourpx },

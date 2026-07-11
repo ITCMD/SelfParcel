@@ -31,6 +31,12 @@ export interface ModuleRequest {
 export interface FieldMap {
   description: string;
   date?: string;
+  /**
+   * Build the timestamp from a `{dotted.path}` template instead of a single
+   * path, for APIs that split it across fields (e.g. FedEx's date + time +
+   * gmtOffset -> "{date}T{time}{gmtOffset}"). Wins over `date` when both set.
+   */
+  dateText?: string;
   location?: string;
 }
 
@@ -70,6 +76,24 @@ export interface BrowserApiSpec {
   estimatedDeliveryText?: string;
 }
 
+/**
+ * Instead of calling a carrier's API ourselves, render the tracking page and
+ * capture the JSON response of the API call the page itself makes (matched by
+ * URL regex). For APIs that refuse replicated requests (FedEx's track/v2 only
+ * answers its own page's bootstrap call with CORS headers) - the page's own
+ * request always has perfect fidelity, so we just read it off the wire.
+ */
+export interface BrowserCaptureSpec {
+  /** Regex tested against every response URL while the page renders. */
+  urlPattern: string;
+  eventsPath: string;
+  fields: FieldMap;
+  statusPath?: string;
+  estimatedDeliveryPath?: string;
+  /** `{dotted.path}` template for the ETA, date-parsed (see BrowserApiSpec). */
+  estimatedDeliveryText?: string;
+}
+
 export interface ScraperSpec {
   browser?: { enabled?: boolean; waitFor?: string; warmupUrl?: string };
   rowSelector: string;
@@ -80,6 +104,8 @@ export interface ScraperSpec {
   fastJson?: FastJsonSpec;
   /** Fetch a JSON API from within the warmed-up browser (see BrowserApiSpec). */
   browserApi?: BrowserApiSpec;
+  /** Capture the page's own API response while it renders (see BrowserCaptureSpec). */
+  browserCapture?: BrowserCaptureSpec;
 }
 
 export interface JsonSpec {
@@ -160,7 +186,7 @@ function checkFields(fields: unknown, errors: string[], label: string): void {
   }
   const f = fields as Record<string, unknown>;
   if (!isStr(f.description)) errors.push(`${label}.description is required`);
-  for (const key of ['date', 'location']) {
+  for (const key of ['date', 'dateText', 'location']) {
     if (f[key] !== undefined && typeof f[key] !== 'string') {
       errors.push(`${label}.${key} must be a string`);
     }
@@ -256,6 +282,17 @@ export function validateModule(
         for (const key of ['body', 'method', 'contentType', 'tokenCookie', 'tokenHeader', 'estimatedDeliveryText']) {
           if (ba?.[key] !== undefined && typeof ba[key] !== 'string') {
             errors.push(`scraper.browserApi.${key} must be a string`);
+          }
+        }
+      }
+      if (m.scraper.browserCapture !== undefined) {
+        const bc = m.scraper.browserCapture;
+        regexOk(bc?.urlPattern, errors, 'scraper.browserCapture.urlPattern');
+        if (!isStr(bc?.eventsPath)) errors.push('scraper.browserCapture.eventsPath is required');
+        checkFields(bc?.fields, errors, 'scraper.browserCapture.fields');
+        for (const key of ['statusPath', 'estimatedDeliveryPath', 'estimatedDeliveryText']) {
+          if (bc?.[key] !== undefined && typeof bc[key] !== 'string') {
+            errors.push(`scraper.browserCapture.${key} must be a string`);
           }
         }
       }

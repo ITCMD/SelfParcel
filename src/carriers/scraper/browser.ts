@@ -319,6 +319,86 @@ async function browserApiCall(url: string, opts: BrowserApiOptions): Promise<Bro
   }
 }
 
+export interface CaptureOptions {
+  /** Regex source tested against every response URL while the page loads. */
+  urlPattern: string;
+  timeoutMs?: number;
+  guard?: (target: string) => Promise<void>;
+}
+
+/**
+ * Render a page in a FRESH context and capture the body of the first API
+ * response whose URL matches `urlPattern`. For carriers whose API refuses
+ * requests we make ourselves (even from inside the page) but is called by the
+ * page's own bootstrap code with credentials we can't replicate - FedEx's
+ * track/v2 only hands CORS headers to its own call.
+ *
+ * Deliberately no session replay: replayed FedEx cookies make the app serve
+ * cached results and skip the very network call we're here to capture, and the
+ * page clears the WAF fine from cold. As with fetchJsonViaBrowser, no
+ * per-request route guard either: interception breaks the bot-sensor
+ * telemetry, and the only module-controlled URL is the page URL, checked here.
+ */
+export async function captureJsonFromPage(
+  pageUrl: string,
+  opts: CaptureOptions,
+): Promise<{ body: string }> {
+  if (opts.guard) await opts.guard(pageUrl);
+  return withScrapeSlot(() => captureCall(pageUrl, opts));
+}
+
+async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ body: string }> {
+  const timeout = opts.timeoutMs ?? 30_000;
+  const re = new RegExp(opts.urlPattern, 'i');
+  const browser = await getBrowser();
+
+  const context = await browser.newContext({
+    userAgent: USER_AGENT,
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    viewport: { width: 1366, height: 900 },
+  });
+
+  const page = await context.newPage();
+  try {
+    let settle: (body: string) => void;
+    const matched = new Promise<string>((resolve) => {
+      settle = resolve;
+    });
+    let done = false;
+    page.on('response', (res) => {
+      if (done || !re.test(res.url())) return;
+      // The first matching response wins; read its body before the page moves on.
+      res
+        .text()
+        .then((text) => {
+          if (!done) {
+            done = true;
+            settle(text);
+          }
+        })
+        .catch(() => {
+          /* redirect/aborted response body - keep waiting for the next match */
+        });
+    });
+
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout }).catch(() => {
+      // The API call often lands before/without full navigation success.
+    });
+
+    const deadline = page.waitForTimeout(timeout).then(() => {
+      throw new Error(`No response matching ${opts.urlPattern} within ${timeout}ms`);
+    });
+    // If the capture wins, the still-pending deadline rejects once the page
+    // closes; swallow that so it never becomes an unhandled rejection.
+    deadline.catch(() => {});
+    const body = await Promise.race([matched, deadline]);
+    return { body };
+  } finally {
+    await context.close();
+  }
+}
+
 const rnd = (min: number, max: number): number => min + Math.random() * (max - min);
 
 // Nudge the mouse/scroll a few times and settle, so a bot-detection sensor sees
