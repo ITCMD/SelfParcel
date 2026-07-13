@@ -352,13 +352,48 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
   const re = new RegExp(opts.urlPattern, 'i');
   const browser = await getBrowser();
 
+  // The API response lands ~2-3s after navigation when Akamai trusts the
+  // session; when it doesn't, it CORS-kills the page's own call (net::ERR_FAILED)
+  // and the SPA bails to an error page. That scoring is intermittent and, once
+  // a context is poisoned, reloading it never recovers - only a brand-new
+  // context has a fresh shot. So each attempt below is a throwaway context; we
+  // keep spinning up fresh ones until one succeeds or the budget runs out.
+  const started = Date.now();
+  const budgetLeft = (): number => timeout - (Date.now() - started);
+  const PER_ATTEMPT_MS = 14_000; // cold success ~3s; abandon a poisoned context fast
+  let lastMisses: string[] = [];
+  let lastState = '';
+
+  while (budgetLeft() > 6_000) {
+    const attempt = await captureAttempt(browser, pageUrl, re, Math.min(PER_ATTEMPT_MS, budgetLeft()));
+    if (attempt.body !== null) return { body: attempt.body };
+    lastMisses = attempt.misses;
+    lastState = attempt.state;
+  }
+
+  const saw = lastMisses.length ? ` (saw: ${lastMisses.join(', ')})` : '';
+  throw new Error(
+    `No successful response matching ${opts.urlPattern} within ${timeout}ms${saw}${lastState}`,
+  );
+}
+
+// One throwaway-context capture attempt. Returns the matched body, or null plus
+// diagnostics (what failed responses/requests it saw, and a page snapshot).
+async function captureAttempt(
+  browser: Browser,
+  pageUrl: string,
+  re: RegExp,
+  perAttemptMs: number,
+): Promise<{ body: string | null; misses: string[]; state: string }> {
+  // Deliberately NO userAgent override: the stealth plugin already de-headlesses
+  // the real UA so it matches the sec-ch-ua client hints (platform included).
+  // Forcing a Windows UA on a Linux container is a UA-vs-hints contradiction
+  // FedEx's gateway scores hard enough to CORS-kill the page's own API call.
   const context = await browser.newContext({
-    userAgent: USER_AGENT,
     locale: 'en-US',
     timezoneId: 'America/New_York',
     viewport: { width: 1366, height: 900 },
   });
-
   const page = await context.newPage();
   try {
     let settle: (body: string) => void;
@@ -366,15 +401,12 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
       settle = resolve;
     });
     let done = false;
-    // Rejected attempts we saw while waiting, for the timeout error message -
-    // "saw: HTTP 403" tells an admin it's a WAF block, not a dead selector.
     const misses: string[] = [];
     page.on('response', (res) => {
       if (done || !re.test(res.url())) return;
       const method = res.request().method();
       if (method === 'OPTIONS' || method === 'HEAD') return; // CORS preflight noise
       if (res.status() < 200 || res.status() >= 300) {
-        // Auth bootstrap or WAF rejection; SPAs often retry - keep waiting.
         misses.push(`HTTP ${res.status()}`);
         return;
       }
@@ -394,51 +426,27 @@ async function captureCall(pageUrl: string, opts: CaptureOptions): Promise<{ bod
           misses.push('unreadable body');
         });
     });
-    // A request that never got a response at all (DNS blocked, connection
-    // refused/reset, CORS kill) - names the network error, e.g.
-    // "net::ERR_NAME_NOT_RESOLVED" when a DNS filter blocks the API host.
+    // A request that got no response at all (DNS block, connection reset, CORS
+    // kill) - names the network error, e.g. "net::ERR_FAILED" for a CORS kill.
     page.on('requestfailed', (req) => {
       if (done || !re.test(req.url())) return;
       misses.push(req.failure()?.errorText ?? 'request failed');
     });
 
-    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout }).catch(() => {
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: perAttemptMs }).catch(() => {
       // The API call often lands before/without full navigation success.
     });
 
-    // Wait for the match or ms, whichever first; null means no match yet.
-    const waitForMatch = (ms: number): Promise<string | null> =>
-      Promise.race([
-        matched,
-        page
-          .waitForTimeout(ms)
-          .then(() => null)
-          .catch(() => null),
-      ]);
+    const body = await Promise.race([
+      matched,
+      page
+        .waitForTimeout(perAttemptMs)
+        .then(() => null)
+        .catch(() => null),
+    ]);
 
-    // Phase 1: the call usually lands 2-3s after navigation.
-    let body = await waitForMatch(Math.min(12_000, timeout));
-
-    if (body === null) {
-      // Phase 2: no (successful) call. Akamai may have scored the fresh
-      // context bot-ish and CORS-killed the page's own API call. Feed the
-      // sensor human-like telemetry, then reload IN THIS CONTEXT so the
-      // now-validated clearance cookies ride the second attempt.
-      await humanize(page);
-      await page.reload({ waitUntil: 'domcontentloaded', timeout }).catch(() => {});
-      body = await waitForMatch(timeout);
-    }
-
-    if (body === null) {
-      const saw = misses.length ? ` (saw: ${misses.join(', ')})` : '';
-      // Describe what the page showed instead, so a WAF challenge or an error
-      // page is identifiable straight from the refresh error / logs.
-      const state = await describePage(page);
-      throw new Error(
-        `No successful response matching ${opts.urlPattern} within ${timeout}ms${saw}${state}`,
-      );
-    }
-    return { body };
+    const state = body === null ? await describePage(page) : '';
+    return { body, misses, state };
   } finally {
     await context.close();
   }

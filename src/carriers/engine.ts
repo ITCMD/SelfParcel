@@ -373,8 +373,7 @@ export async function inspectModule(module: CarrierModule, tn: string): Promise<
 
   if (spec.browserCapture && config.scraper.browserFallback) {
     try {
-      // Single attempt (no retry) so the test answers before proxy timeouts.
-      const r = await tryBrowserCapture(module, spec.browserCapture, tn, { retry: false });
+      const r = await tryBrowserCapture(module, spec.browserCapture, tn);
       if (r && r.events.length) {
         return {
           ok: true,
@@ -520,25 +519,16 @@ async function tryBrowserCapture(
   module: CarrierModule,
   spec: BrowserCaptureSpec,
   tn: string,
-  opts: { retry?: boolean } = {},
 ): Promise<TrackingResult | null> {
-  const capture = () =>
-    captureJsonFromPage(fillTemplate(module.request.url, tn), {
-      urlPattern: spec.urlPattern,
-      timeoutMs: module.request.timeoutMs,
-      guard: async (target) => {
-        await assertPublicUrl(target);
-      },
-    });
-  let body: string;
-  try {
-    ({ body } = await capture());
-  } catch (err) {
-    // The SPA occasionally skips its API call on a load; one fresh retry.
-    // The admin Test skips it to answer before reverse-proxy timeouts.
-    if (opts.retry === false) throw err;
-    ({ body } = await capture());
-  }
+  // captureJsonFromPage already retries fresh contexts internally within
+  // request.timeoutMs, so a single call here is the whole retry budget.
+  const { body } = await captureJsonFromPage(fillTemplate(module.request.url, tn), {
+    urlPattern: spec.urlPattern,
+    timeoutMs: module.request.timeoutMs,
+    guard: async (target) => {
+      await assertPublicUrl(target);
+    },
+  });
   if (matchesNotFound(module, body)) {
     throw new NotFoundError(`${module.name}: status not available yet`);
   }

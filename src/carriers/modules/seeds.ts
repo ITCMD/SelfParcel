@@ -235,9 +235,11 @@ const fedex: CarrierModule = {
     url: 'https://www.fedex.com/fedextrack/?trknbr={tn}',
     method: 'GET',
     headers: { 'Accept-Language': 'en-US,en;q=0.9' },
-    // The capture lands ~2-3s after navigation when it works; keep the ceiling
-    // moderate so a blocked page doesn't tie up the scrape queue for minutes.
-    timeoutMs: 30000,
+    // Doubles as the capture's total budget: it lands in ~2-3s when Akamai
+    // trusts the session, but on a harshly-scored host each retry (telemetry +
+    // reload) needs ~15s, so allow a few within one refresh. Stays under the
+    // admin Test's 90s cap.
+    timeoutMs: 60000,
   },
   notFound: [
     'unable to (locate|retrieve)',
@@ -387,7 +389,7 @@ const fourpx: CarrierModule = {
 
 export const BUILTIN_SEEDS: BuiltinSeed[] = [
   { code: 'ups', name: 'UPS', kind: 'scraper', seedVersion: '4', module: ups },
-  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '6', module: fedex },
+  { code: 'fedex', name: 'FedEx', kind: 'scraper', seedVersion: '7', module: fedex },
   { code: 'usps', name: 'USPS', kind: 'scraper', seedVersion: '7', module: usps },
   { code: 'speedpak', name: 'SpeedPAK', kind: 'scraper', seedVersion: '1', module: speedpak },
   { code: 'fourpx', name: '4PX', kind: 'json', seedVersion: '1', module: fourpx },
